@@ -225,6 +225,7 @@
       <thead><tr><th>算法</th><th>扩展节点</th><th>路径代价</th><th>最优？</th></tr></thead>
       <tbody></tbody>
     </table>
+    <div class="kbd hidden" id="cmpNote">修改障碍、起点终点、地图或参数后会自动重新计算。</div>
   </aside>
 </main>
 
@@ -602,8 +603,7 @@ function genMap(kind) {
     start = idx(1, 1); goal = idx(maxR, maxC);
   }
   walls[start] = 0; walls[goal] = 0;
-  $('#cmpTbl').classList.add('hidden');
-  layout(); resetSearch();
+  layout(); resetSearch(); refreshCompare();
 }
 
 // ---------- 对比 ----------
@@ -623,6 +623,11 @@ function compareAll() {
     tb.appendChild(tr);
   }
   $('#cmpTbl').classList.remove('hidden');
+  $('#cmpNote').classList.remove('hidden');
+}
+// 对比表已打开时，地图或参数一变就重新计算，避免显示过期结果
+function refreshCompare() {
+  if (!$('#cmpTbl').classList.contains('hidden')) compareAll();
 }
 
 // ---------- 鼠标编辑 ----------
@@ -652,7 +657,7 @@ cv.addEventListener('pointermove', e => {
   }
   draw();
 });
-const endDrag = () => { if (drag) { drag = null; $('#cmpTbl').classList.add('hidden'); } };
+const endDrag = () => { if (drag) { drag = null; refreshCompare(); } };
 cv.addEventListener('pointerup', endDrag);
 cv.addEventListener('pointercancel', endDrag);
 
@@ -666,9 +671,9 @@ onClick('#compare', compareAll);
 $('#map').addEventListener('change', () => genMap($('#map').value));
 $('#size').addEventListener('change', () => genMap($('#map').value));
 for (const id of ['#algo', '#heur', '#diag']) $(id).addEventListener('change', () => {
-  updateAlgoUI(); resetSearch(); $('#cmpTbl').classList.add('hidden');
+  updateAlgoUI(); resetSearch(); refreshCompare();
 });
-$('#w').addEventListener('input', () => { $('#wval').textContent = (+$('#w').value).toFixed(1); resetSearch(); });
+$('#w').addEventListener('input', () => { $('#wval').textContent = (+$('#w').value).toFixed(1); resetSearch(); refreshCompare(); });
 for (const id of ['#showNums', '#showParent']) $(id).addEventListener('change', draw);
 
 document.addEventListener('keydown', e => {
