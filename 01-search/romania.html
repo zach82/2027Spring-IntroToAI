@@ -1,0 +1,406 @@
+<meta charset="utf-8">
+<title>罗马尼亚地图搜索</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 布局：左侧罗马尼亚地图 + 右侧控制面板；与网格搜索演示同一套配色 */
+  :root {
+    --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --on-accent: #ffffff;
+    --surface2: #f1f5f9; --control: #ffffff;
+    --note-bg: #fffbeb; --note-border: #fde68a; --best-bg: #ecfdf5; --cur-bg: #eff6ff;
+    --edge: #cbd5e1; --edge-label: #64748b; --node: #ffffff; --node-stroke: #94a3b8;
+    --open: #86efac; --closed: #93c5fd; --current: #f59e0b; --pathline: #ea580c;
+    --start: #16a34a; --goal: #dc2626; --halo: #f8fafc;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --best-bg: #064e3b; --cur-bg: #1e3a8a;
+    --edge: #334155; --edge-label: #94a3b8; --node: #0f172a; --node-stroke: #64748b;
+    --open: #16a34a; --closed: #2563eb; --current: #fbbf24; --pathline: #fb923c;
+    --start: #22c55e; --goal: #ef4444; --halo: #0b1220;
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --best-bg: #064e3b; --cur-bg: #1e3a8a;
+    --edge: #334155; --edge-label: #94a3b8; --node: #0f172a; --node-stroke: #64748b;
+    --open: #16a34a; --closed: #2563eb; --current: #fbbf24; --pathline: #fb923c;
+    --start: #22c55e; --goal: #ef4444; --halo: #0b1220;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif; font-size: 15px; }
+  header { padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header a { color: var(--accent); font-size: 14px; text-decoration: none; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px;
+    padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .left { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 10px; }
+  .stage { flex: 1; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+  svg { width: 100%; height: 100%; max-height: 100%; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; justify-content: center; font-size: 14px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 1px solid var(--border); }
+  .order { font-size: 14px; line-height: 1.7; color: var(--muted); text-align: center; min-height: 24px; }
+  .order b { color: var(--text); }
+  aside { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-y: auto; min-height: 0; min-width: 0; }
+  aside h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 8px; letter-spacing: .05em; }
+  aside h2:first-child { margin-top: 0; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .row label { min-width: 64px; color: var(--muted); }
+  select, button { font: inherit; color: var(--text); }
+  select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); flex: 1; min-width: 0; }
+  button { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); cursor: pointer; }
+  button:hover { background: var(--surface2); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); min-width: 88px; }
+  button.primary:hover { background: var(--accent-hover); }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .desc { background: var(--surface2); border-radius: 6px; padding: 10px 12px; line-height: 1.6; font-size: 14px; }
+  .desc b { color: var(--accent); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .msg { min-height: 48px; background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 6px; padding: 8px 10px; line-height: 1.6; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  tr.best td { background: var(--best-bg); font-weight: 600; }
+  tr.cur td { background: var(--cur-bg); }
+  .kbd { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .row .kbd { margin-top: 0; }
+  .speedval { min-width: 56px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .hidden { display: none !important; }
+  .city text { font-size: 13px; paint-order: stroke; stroke: var(--halo); stroke-width: 4px; fill: var(--text); }
+  .city text.h { font-size: 11px; fill: var(--muted); }
+  .elabel { font-size: 11px; fill: var(--edge-label); paint-order: stroke; stroke: var(--halo); stroke-width: 3px; }
+  @media (max-width: 900px) {
+    html, body { height: auto; }
+    main { grid-template-columns: minmax(0, 1fr); flex: none; }
+    .left, aside { min-height: auto; }
+    .stage { height: 60vh; flex: none; }
+    aside { overflow: visible; }
+  }
+</style>
+
+<header>
+  <h1>罗马尼亚地图：从 Arad 到 Bucharest</h1>
+  <span class="sub">人工智能导论 · 第 3 章 搜索 · 教材图 3.1</span>
+  <a class="back" href="./">← 网格搜索演示</a>
+</header>
+<main>
+  <section class="left">
+    <div class="stage"><svg id="map" role="img" aria-label="罗马尼亚地图"></svg></div>
+    <div class="legend">
+      <span><i style="background:var(--start)"></i>起点</span>
+      <span><i style="background:var(--goal)"></i>终点 Bucharest</span>
+      <span><i style="background:var(--open)"></i>边界（待扩展）</span>
+      <span><i style="background:var(--closed)"></i>已扩展</span>
+      <span><i style="background:var(--node);border:3px solid var(--current)"></i>当前扩展</span>
+      <span><i style="background:var(--pathline)"></i>找到的路径</span>
+    </div>
+    <div class="order" id="order">扩展顺序会显示在这里</div>
+  </section>
+
+  <aside>
+    <h2>问题与算法</h2>
+    <div class="row">
+      <label for="start">起点</label>
+      <select id="start"></select>
+    </div>
+    <div class="row">
+      <label for="algo">算法</label>
+      <select id="algo">
+        <option value="bfs">广度优先搜索 BFS</option>
+        <option value="dfs">深度优先搜索 DFS</option>
+        <option value="ucs">一致代价搜索 UCS</option>
+        <option value="greedy">贪婪最佳优先搜索</option>
+        <option value="astar" selected>A* 搜索</option>
+      </select>
+    </div>
+    <div class="desc" id="desc"></div>
+
+    <h2>运行</h2>
+    <div class="row">
+      <button class="primary" id="play">▶ 开始</button>
+      <button id="step">⏭ 单步</button>
+      <button id="reset">↺ 重置</button>
+    </div>
+    <div class="row">
+      <label for="speed">每步时间</label>
+      <span class="kbd">慢</span>
+      <input type="range" id="speed" min="0" max="8" step="1" value="3">
+      <span class="kbd">快</span>
+      <span id="speedVal" class="speedval">1 秒</span>
+    </div>
+    <div class="kbd">快捷键：空格 开始/暂停，→ 单步，R 重置，− / + 调慢 / 调快</div>
+
+    <h2>当前状态</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">已扩展城市</div><div class="v" id="sExp">0</div></div>
+      <div class="stat"><div class="k">边界大小</div><div class="v" id="sOpen">0</div></div>
+      <div class="stat"><div class="k">路径经过城市</div><div class="v" id="sLen">–</div></div>
+      <div class="stat"><div class="k">路径总长（km）</div><div class="v" id="sCost">–</div></div>
+    </div>
+    <div class="row" style="margin-top:8px"><div class="msg" id="msg" style="flex:1">点击"开始"或"单步"运行搜索。</div></div>
+
+    <h2>边界（按出队顺序）</h2>
+    <table>
+      <thead><tr><th>城市</th><th>g</th><th>h</th><th id="keyHead">f=g+h</th></tr></thead>
+      <tbody id="openTbl"></tbody>
+    </table>
+
+    <h2>算法对比（当前起点）</h2>
+    <div class="row"><button id="compare">运行全部算法并对比</button></div>
+    <table id="cmpTbl" class="hidden">
+      <thead><tr><th>算法</th><th>扩展城市</th><th>路径长度</th><th>最优？</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </aside>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+// 教材图 3.1 的城市坐标（示意位置）、道路距离；图 3.16 的到 Bucharest 直线距离
+const LOC = {
+  Arad: [91, 492], Bucharest: [400, 327], Craiova: [253, 288], Drobeta: [165, 299], Eforie: [562, 293],
+  Fagaras: [305, 449], Giurgiu: [375, 270], Hirsova: [534, 350], Iasi: [473, 506], Lugoj: [165, 379],
+  Mehadia: [168, 339], Neamt: [406, 537], Oradea: [131, 571], Pitesti: [320, 368], 'Rimnicu Vilcea': [233, 410],
+  Sibiu: [207, 457], Timisoara: [94, 410], Urziceni: [456, 350], Vaslui: [509, 444], Zerind: [108, 531]
+};
+const ROADS = [
+  ['Arad', 'Zerind', 75], ['Arad', 'Sibiu', 140], ['Arad', 'Timisoara', 118], ['Zerind', 'Oradea', 71],
+  ['Oradea', 'Sibiu', 151], ['Timisoara', 'Lugoj', 111], ['Lugoj', 'Mehadia', 70], ['Mehadia', 'Drobeta', 75],
+  ['Drobeta', 'Craiova', 120], ['Craiova', 'Rimnicu Vilcea', 146], ['Craiova', 'Pitesti', 138],
+  ['Sibiu', 'Fagaras', 99], ['Sibiu', 'Rimnicu Vilcea', 80], ['Rimnicu Vilcea', 'Pitesti', 97],
+  ['Fagaras', 'Bucharest', 211], ['Pitesti', 'Bucharest', 101], ['Bucharest', 'Giurgiu', 90],
+  ['Bucharest', 'Urziceni', 85], ['Urziceni', 'Hirsova', 98], ['Hirsova', 'Eforie', 86],
+  ['Urziceni', 'Vaslui', 142], ['Vaslui', 'Iasi', 92], ['Iasi', 'Neamt', 87]
+];
+const SLD = {
+  Arad: 366, Bucharest: 0, Craiova: 160, Drobeta: 242, Eforie: 161, Fagaras: 176, Giurgiu: 77, Hirsova: 151,
+  Iasi: 226, Lugoj: 244, Mehadia: 241, Neamt: 234, Oradea: 380, Pitesti: 100, 'Rimnicu Vilcea': 193,
+  Sibiu: 253, Timisoara: 329, Urziceni: 80, Vaslui: 199, Zerind: 374
+};
+const GOAL = 'Bucharest';
+const CITIES = Object.keys(LOC).sort();
+const ADJ = {};
+for (const c of CITIES) ADJ[c] = [];
+for (const [a, b, d] of ROADS) { ADJ[a].push([b, d]); ADJ[b].push([a, d]); }
+for (const c of CITIES) ADJ[c].sort((x, y) => x[0].localeCompare(y[0]));   // 按字母顺序生成后继
+
+const ALGO_NAMES = { bfs: 'BFS', dfs: 'DFS', ucs: 'UCS', greedy: '贪婪最佳优先', astar: 'A*' };
+const DESC = {
+  bfs: '<b>广度优先搜索</b>：边界是先进先出队列，先扩展离起点"站数"最少的城市。不看道路长短，所以找到的路线经过的城市最少，但<b>总长不一定最短</b>。',
+  dfs: '<b>深度优先搜索</b>：边界是后进先出栈，沿一条路一直走下去。<b>不保证最优</b>，可能绕很远。',
+  ucs: '<b>一致代价搜索</b>：总是扩展从起点出发<b>已走路程 g(n)</b> 最短的城市。保证找到最短路线，但会朝各个方向扩展。',
+  greedy: '<b>贪婪最佳优先搜索</b>：总是扩展到 Bucharest <b>直线距离 h(n)</b> 最小的城市。很快，但从 Arad 出发会经 Fagaras 走 450 km，<b>不是最短</b>。',
+  astar: '<b>A* 搜索</b>：扩展 <b>f(n) = g(n) + h(n)</b> 最小的城市。直线距离不会高估真实路程（可采纳），所以 A* 找到的一定是最短路线（418 km）。'
+};
+
+let S = null, playing = false, timer = null;
+
+// ---------- 搜索 ----------
+function makeSearch(algo, start) {
+  const s = { algo, start, g: {}, parent: {}, state: {}, order: {}, open: [], cur: null, path: null,
+    done: false, found: false, expanded: 0, pushed: 0, seq: [] };
+  for (const c of CITIES) { s.g[c] = Infinity; s.parent[c] = null; s.state[c] = 0; }
+  s.key = c => algo === 'astar' ? s.g[c] + SLD[c] : algo === 'greedy' ? SLD[c] : s.g[c];
+  s.gen = run(s);
+  return s;
+}
+function better(s, a, b) {
+  const ka = s.key(a), kb = s.key(b);
+  if (ka !== kb) return ka < kb;
+  return s.order[a] < s.order[b];
+}
+function openSorted(s) {
+  if (s.algo === 'bfs') return s.open.slice();
+  if (s.algo === 'dfs') return s.open.slice().reverse();
+  return s.open.slice().sort((a, b) => better(s, a, b) ? -1 : better(s, b, a) ? 1 : 0);
+}
+function* run(s) {
+  const { algo, start } = s;
+  s.g[start] = 0; s.state[start] = 1; s.order[start] = s.pushed++; s.open.push(start);
+  yield { msg: `初始化：把起点 <b>${start}</b> 放入边界。` };
+  while (s.open.length) {
+    let c;
+    if (algo === 'bfs') c = s.open.shift();
+    else if (algo === 'dfs') c = s.open.pop();
+    else { let bi = 0; for (let k = 1; k < s.open.length; k++) if (better(s, s.open[k], s.open[bi])) bi = k; c = s.open.splice(bi, 1)[0]; }
+    s.state[c] = 2; s.cur = c; s.expanded++; s.seq.push(c);
+    if (c === GOAL) {
+      s.path = []; for (let v = c; v; v = s.parent[v]) s.path.unshift(v);
+      s.done = true; s.found = true;
+      yield { msg: `<b>到达 Bucharest！</b>路线：${s.path.join(' → ')}，总长 <b>${s.g[c]} km</b>，共扩展 ${s.expanded} 个城市。` };
+      return;
+    }
+    const added = [], updated = [];
+    for (const [n, d] of ADJ[c]) {
+      const ng = s.g[c] + d;
+      if (algo === 'bfs' || algo === 'dfs') {
+        if (s.state[n] === 0) { s.g[n] = ng; s.parent[n] = c; s.state[n] = 1; s.order[n] = s.pushed++; s.open.push(n); added.push(n); }
+      } else if (s.state[n] !== 2 && ng < s.g[n]) {
+        const was = s.state[n] === 1;
+        s.g[n] = ng; s.parent[n] = c;
+        if (was) updated.push(n); else { s.state[n] = 1; s.order[n] = s.pushed++; s.open.push(n); added.push(n); }
+      }
+    }
+    let what = algo === 'astar' ? `f = ${s.g[c]} + ${SLD[c]} = ${s.key(c)}` : algo === 'greedy' ? `h = ${SLD[c]}` : algo === 'ucs' ? `g = ${s.g[c]}` : algo === 'bfs' ? '队首' : '栈顶';
+    let m = `第 ${s.expanded} 次扩展：<b>${c}</b>（${what}）。`;
+    m += added.length ? `加入边界：${added.join('、')}` : '没有新城市加入边界';
+    if (updated.length) m += `；<b>更新了 ${updated.join('、')} 的 g 值</b>（找到更短的路）`;
+    yield { msg: m + '。' };
+  }
+  s.done = true; s.cur = null;
+  yield { msg: '边界已空：无法到达 Bucharest。' };
+}
+
+// ---------- 地图绘制 ----------
+const svg = $('#map');
+const X = c => LOC[c][0], Y = c => 640 - LOC[c][1];
+svg.setAttribute('viewBox', '0 40 610 360');
+const el = (tag, attrs, parent = svg) => { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+const edgeEls = {}, cityEls = {};
+const ekey = (a, b) => [a, b].sort().join('|');
+for (const [a, b, d] of ROADS) {
+  edgeEls[ekey(a, b)] = el('line', { x1: X(a), y1: Y(a), x2: X(b), y2: Y(b), 'stroke-width': 2, 'stroke-linecap': 'round' });
+}
+for (const [a, b, d] of ROADS) {
+  const t = el('text', { x: (X(a) + X(b)) / 2, y: (Y(a) + Y(b)) / 2 + 4, 'text-anchor': 'middle', class: 'elabel' });
+  t.textContent = d;
+}
+const LABEL_BELOW = new Set(['Craiova', 'Drobeta', 'Giurgiu', 'Eforie', 'Mehadia', 'Pitesti', 'Bucharest', 'Lugoj']);
+for (const c of CITIES) {
+  const g = el('g', { class: 'city' });
+  const circle = el('circle', { cx: X(c), cy: Y(c), r: 8, 'stroke-width': 2 }, g);
+  const below = LABEL_BELOW.has(c);
+  const name = el('text', { x: X(c), y: Y(c) + (below ? 24 : -14), 'text-anchor': 'middle' }, g);
+  name.textContent = c;
+  const h = el('text', { x: X(c), y: Y(c) + (below ? 37 : -27), 'text-anchor': 'middle', class: 'h' }, g);
+  h.textContent = '';
+  cityEls[c] = { circle, h };
+}
+
+function draw() {
+  const pathEdges = new Set();
+  if (S && S.path) for (let i = 1; i < S.path.length; i++) pathEdges.add(ekey(S.path[i - 1], S.path[i]));
+  const treeEdges = new Set();
+  if (S) for (const c of CITIES) if (S.parent[c]) treeEdges.add(ekey(c, S.parent[c]));
+  for (const k in edgeEls) {
+    const e = edgeEls[k];
+    e.setAttribute('stroke', pathEdges.has(k) ? css('--pathline') : treeEdges.has(k) ? css('--node-stroke') : css('--edge'));
+    e.setAttribute('stroke-width', pathEdges.has(k) ? 6 : treeEdges.has(k) ? 3 : 2);
+  }
+  const algo = $('#algo').value, start = $('#start').value;
+  for (const c of CITIES) {
+    const { circle, h } = cityEls[c];
+    let fill = css('--node'), stroke = css('--node-stroke'), sw = 2, r = 8;
+    if (S && S.state[c] === 2) fill = css('--closed');
+    else if (S && S.state[c] === 1) fill = css('--open');
+    if (c === start) { fill = css('--start'); stroke = css('--start'); r = 10; }
+    if (c === GOAL) { fill = css('--goal'); stroke = css('--goal'); r = 10; }
+    if (S && S.cur === c && !S.found) { stroke = css('--current'); sw = 5; r = 11; }
+    circle.setAttribute('fill', fill); circle.setAttribute('stroke', stroke);
+    circle.setAttribute('stroke-width', sw); circle.setAttribute('r', r);
+    // 已生成的城市显示数值；未生成时，用到启发函数的算法显示 h
+    let label = '';
+    if (S && S.state[c]) {
+      label = algo === 'astar' ? `g=${S.g[c]} h=${SLD[c]} f=${S.key(c)}` : algo === 'greedy' ? `h=${SLD[c]}` : `g=${S.g[c]}`;
+    } else if (algo === 'astar' || algo === 'greedy') label = `h=${SLD[c]}`;
+    h.textContent = label;
+  }
+  $('#order').innerHTML = S && S.seq.length ? '扩展顺序：' + S.seq.map(c => `<b>${c}</b>`).join(' → ') : '扩展顺序会显示在这里';
+}
+
+function updatePanel(msg) {
+  $('#sExp').textContent = S ? S.expanded : 0;
+  $('#sOpen').textContent = S ? S.open.length : 0;
+  $('#sLen').textContent = S && S.found ? S.path.length : '–';
+  $('#sCost').textContent = S && S.found ? S.g[GOAL] : '–';
+  if (msg !== undefined) $('#msg').innerHTML = msg;
+  const algo = $('#algo').value;
+  $('#keyHead').textContent = algo === 'astar' ? 'f=g+h' : algo === 'greedy' ? '优先级 h' : algo === 'ucs' ? '优先级 g' : '–';
+  const tb = $('#openTbl'); tb.innerHTML = '';
+  if (S) openSorted(S).forEach((c, k) => {
+    const tr = document.createElement('tr'); if (k === 0) tr.className = 'best';
+    const key = (algo === 'bfs' || algo === 'dfs') ? '–' : S.key(c);
+    tr.innerHTML = `<td>${c}</td><td>${S.g[c]}</td><td>${SLD[c]}</td><td>${key}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+// ---------- 运行控制 ----------
+function step() {
+  if (!S) S = makeSearch($('#algo').value, $('#start').value);
+  if (S.done) { setPlaying(false); return; }
+  const r = S.gen.next();
+  if (r.done) S.done = true;
+  draw(); updatePanel(r.value ? r.value.msg : undefined);
+  if (S.done) setPlaying(false);
+}
+const STEP_SEC = [3, 2, 1.5, 1, 0.5, 0.25, 0.1, 0.05, 0.01];
+const delay = () => STEP_SEC[+$('#speed').value] * 1000;
+function tick() { if (!playing) return; step(); if (playing) timer = setTimeout(tick, delay()); }
+function setPlaying(p) { playing = p; clearTimeout(timer); $('#play').textContent = p ? '⏸ 暂停' : '▶ 开始'; if (p) tick(); }
+function resetSearch(msg = '点击"开始"或"单步"运行搜索。') { setPlaying(false); S = null; draw(); updatePanel(msg); }
+function updateSpeedLabel() { const s = STEP_SEC[+$('#speed').value]; $('#speedVal').textContent = s >= 0.1 ? `${s} 秒` : `${s * 1000} 毫秒`; }
+function setSpeed(v) {
+  $('#speed').value = Math.max(0, Math.min(STEP_SEC.length - 1, v)); updateSpeedLabel();
+  if (playing) { clearTimeout(timer); timer = setTimeout(tick, delay()); }
+}
+
+function compareAll() {
+  const start = $('#start').value;
+  const res = Object.keys(ALGO_NAMES).map(a => { const s = makeSearch(a, start); for (const _ of s.gen) {} return { a, exp: s.expanded, cost: s.found ? s.g[GOAL] : Infinity, path: s.path }; });
+  const opt = res.find(x => x.a === 'ucs').cost;
+  const tb = $('#cmpTbl tbody'); tb.innerHTML = '';
+  for (const x of res) {
+    const tr = document.createElement('tr'); if (x.a === $('#algo').value) tr.className = 'cur';
+    tr.title = x.path ? x.path.join(' → ') : '';
+    tr.innerHTML = `<td>${ALGO_NAMES[x.a]}</td><td>${x.exp}</td><td>${x.cost} km</td><td>${x.cost === opt ? '✓' : '✗'}</td>`;
+    tb.appendChild(tr);
+  }
+  $('#cmpTbl').classList.remove('hidden');
+}
+const refreshCompare = () => { if (!$('#cmpTbl').classList.contains('hidden')) compareAll(); };
+
+// ---------- 事件 ----------
+for (const c of CITIES) if (c !== GOAL) $('#start').add(new Option(c, c, c === 'Arad', c === 'Arad'));
+const onClick = (sel, fn) => $(sel).addEventListener('click', e => { fn(); e.currentTarget.blur(); });
+onClick('#play', () => { if (S && S.done) resetSearch(); setPlaying(!playing); });
+onClick('#step', () => { setPlaying(false); step(); });
+onClick('#reset', () => resetSearch());
+onClick('#compare', compareAll);
+for (const id of ['#algo', '#start']) $(id).addEventListener('change', () => { $('#desc').innerHTML = DESC[$('#algo').value]; resetSearch(); refreshCompare(); });
+$('#speed').addEventListener('input', () => setSpeed(+$('#speed').value));
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); if (S && S.done) resetSearch(); setPlaying(!playing); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); setPlaying(false); step(); }
+  else if (e.key === 'r' || e.key === 'R') resetSearch();
+  else if (e.key === '-' || e.key === '_') setSpeed(+$('#speed').value - 1);
+  else if (e.key === '+' || e.key === '=') setSpeed(+$('#speed').value + 1);
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+// 只有作为网站（GitHub Pages 或本地）打开时，返回链接才有效
+if (!/github\.io$|^localhost$|^127\.|^$/.test(location.hostname)) document.querySelectorAll('a.back').forEach(a => a.remove());
+
+$('#desc').innerHTML = DESC.astar;
+updateSpeedLabel();
+resetSearch();
+</script>

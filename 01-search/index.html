@@ -53,6 +53,7 @@
   }
   header h1 { font-size: 22px; margin: 0; text-wrap: balance; }
   header .sub { color: var(--muted); font-size: 14px; }
+  header a { color: var(--accent); font-size: 14px; text-decoration: none; }
   main {
     flex: 1; min-height: 0;
     display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px;
@@ -108,14 +109,16 @@
 
   @media (max-width: 900px) {
     html, body { height: auto; }
-    main { grid-template-columns: minmax(0, 1fr); }
+    main { grid-template-columns: minmax(0, 1fr); flex: none; }
+    .left, aside { min-height: auto; }
     #stage { height: 60vh; flex: none; }
     aside { overflow: visible; }
   }
 </style>
 <header>
   <h1>启发式搜索演示：A* 算法</h1>
-  <span class="sub">人工智能导论 · 搜索</span>
+  <span class="sub">人工智能导论 · 第 3 章 搜索</span>
+  <a class="back" href="romania.html">罗马尼亚地图（教材图 3.1）→</a>
 </header>
 <main>
   <section class="left">
@@ -688,6 +691,8 @@ $('#speed').addEventListener('input', () => setSpeed(+$('#speed').value));
 try { const v = localStorage.getItem('search-demo-speed'); if (v !== null) $('#speed').value = v; } catch (e) {}
 updateSpeedLabel();
 window.addEventListener('resize', layout);
+// 只有作为网站（GitHub Pages 或本地）打开时，页面间链接才有效
+if (!/github\.io$|^localhost$|^127\.|^$/.test(location.hostname)) document.querySelectorAll('a.back').forEach(a => a.remove());
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
 new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
