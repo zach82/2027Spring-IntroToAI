@@ -1,0 +1,424 @@
+<meta charset="utf-8">
+<title>地图着色 CSP</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 布局：左侧地图（或约束图）+ 右侧控制面板 */
+  :root {
+    --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --on-accent: #ffffff;
+    --surface2: #f1f5f9; --control: #ffffff;
+    --note-bg: #fffbeb; --note-border: #fde68a; --cur-bg: #eff6ff;
+    --region: #e2e8f0; --region-line: #64748b; --edge: #94a3b8; --conflict: #dc2626; --active: #f59e0b; --halo: #ffffff;
+    --c0: #f87171; --c1: #4ade80; --c2: #60a5fa; --c3: #facc15;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --cur-bg: #1e3a8a;
+    --region: #1e293b; --region-line: #94a3b8; --edge: #475569; --conflict: #f87171; --active: #fbbf24; --halo: #0b1220;
+    --c0: #b91c1c; --c1: #15803d; --c2: #1d4ed8; --c3: #a16207;
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --cur-bg: #1e3a8a;
+    --region: #1e293b; --region-line: #94a3b8; --edge: #475569; --conflict: #f87171; --active: #fbbf24; --halo: #0b1220;
+    --c0: #b91c1c; --c1: #15803d; --c2: #1d4ed8; --c3: #a16207;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif; font-size: 15px; }
+  header { padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header a { color: var(--accent); font-size: 14px; text-decoration: none; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px;
+    padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .left { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 10px; }
+  .stage { flex: 1; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+  svg { width: 100%; height: 100%; }
+  svg text { paint-order: stroke; stroke: var(--halo); stroke-width: 4px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; font-size: 14px; color: var(--muted); }
+  .legend i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; vertical-align: -2px; margin-right: 4px; }
+  aside { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-y: auto; min-height: 0; min-width: 0; }
+  aside h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 8px; letter-spacing: .05em; }
+  aside h2:first-child { margin-top: 0; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .row label { min-width: 64px; color: var(--muted); }
+  select, button { font: inherit; color: var(--text); }
+  select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); flex: 1; min-width: 0; }
+  button { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); cursor: pointer; }
+  button:hover { background: var(--surface2); }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); min-width: 88px; }
+  button.primary:hover { background: var(--accent-hover); }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .check { display: inline-flex; align-items: center; gap: 4px; }
+  .desc { background: var(--surface2); border-radius: 6px; padding: 10px 12px; line-height: 1.6; font-size: 14px; }
+  .desc b { color: var(--accent); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .msg { min-height: 48px; background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 6px; padding: 8px 10px; line-height: 1.6; font-size: 14px; flex: 1; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  tr.cur td { background: var(--cur-bg); }
+  .kbd { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .row .kbd { margin-top: 0; }
+  .speedval { min-width: 56px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .hidden { display: none !important; }
+  @media (max-width: 900px) {
+    html, body { height: auto; }
+    main { grid-template-columns: minmax(0, 1fr); flex: none; }
+    .left, aside { min-height: auto; }
+    .stage { height: 60vh; flex: none; }
+    aside { overflow: visible; }
+  }
+</style>
+
+<header>
+  <h1>约束满足问题：地图着色</h1>
+  <span class="sub">人工智能导论 · 第 6 章 约束满足问题 · 教材图 6.1</span>
+  <a class="back" href="../">← 全部演示</a>
+</header>
+<main>
+  <section class="left">
+    <div class="stage"><svg id="map" role="img" aria-label="地图着色"></svg></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <aside>
+    <h2>问题</h2>
+    <div class="row">
+      <select id="problem">
+        <option value="au3" selected>澳大利亚，3 种颜色（教材例子）</option>
+        <option value="au2">澳大利亚，2 种颜色（无解）</option>
+        <option value="r3">随机地图，20 个区域，3 种颜色</option>
+        <option value="r4">随机地图，20 个区域，4 种颜色</option>
+      </select>
+      <button id="newMap" disabled>换一张</button>
+    </div>
+    <div class="row"><label class="check"><input type="checkbox" id="showGraph">显示约束图（相邻区域之间连线）</label></div>
+
+    <h2>算法</h2>
+    <div class="row">
+      <select id="algo">
+        <option value="bt">回溯搜索</option>
+        <option value="fc" selected>回溯 + 前向检查</option>
+        <option value="mac">回溯 + MAC（AC-3）</option>
+        <option value="mc">最小冲突（局部搜索）</option>
+      </select>
+    </div>
+    <div class="row" id="orderRow">
+      <label for="order">变量顺序</label>
+      <select id="order">
+        <option value="fixed" selected id="fixedOpt">固定顺序</option>
+        <option value="mrv">MRV + 度启发</option>
+      </select>
+    </div>
+    <div class="desc" id="desc"></div>
+
+    <h2>运行</h2>
+    <div class="row">
+      <button class="primary" id="play">▶ 开始</button>
+      <button id="step">⏭ 单步</button>
+      <button id="reset">↺ 重置</button>
+    </div>
+    <div class="row">
+      <label for="speed">每步时间</label>
+      <span class="kbd">慢</span>
+      <input type="range" id="speed" min="0" max="8" step="1" value="3">
+      <span class="kbd">快</span>
+      <span id="speedVal" class="speedval">1 秒</span>
+    </div>
+    <div class="kbd">快捷键：空格 开始/暂停，→ 单步，R 重置，− / + 调慢 / 调快</div>
+
+    <h2>当前状态</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">赋值次数</div><div class="v" id="sAssign">0</div></div>
+      <div class="stat"><div class="k" id="sBk">回溯次数</div><div class="v" id="sBack">0</div></div>
+      <div class="stat"><div class="k">已着色区域</div><div class="v" id="sDone">0</div></div>
+      <div class="stat"><div class="k">冲突的相邻对</div><div class="v" id="sConf">0</div></div>
+    </div>
+    <div class="row" style="margin-top:8px"><div class="msg" id="msg">点击"开始"或"单步"。</div></div>
+
+    <h2>算法对比（当前地图）</h2>
+    <div class="row"><button id="compare">运行全部组合并对比</button></div>
+    <table id="cmpTbl" class="hidden">
+      <thead><tr><th>算法</th><th>变量顺序</th><th>赋值次数</th><th>回溯次数</th><th>结果</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </aside>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const SVGNS = 'http://www.w3.org/2000/svg';
+const COLOR_NAMES = ['红', '绿', '蓝', '黄'];
+
+const DESC = {
+  bt: '<b>回溯搜索</b>：按顺序给变量赋值，每次只检查新赋的值和<b>已经赋值的邻居</b>是否冲突。所有值都不行时<b>回溯</b>，撤销上一个变量重新选。',
+  fc: '<b>前向检查</b>：每给一个变量赋值，就从它所有<b>未赋值邻居</b>的值域中删掉这个颜色。一旦某个邻居的值域变空，立刻知道走不通，提前回溯。区域下方的小圆点是当前值域。',
+  mac: '<b>MAC（维护弧相容）</b>：赋值后运行 AC-3，不仅检查邻居，还把删除值域的影响<b>继续传播</b>下去，能更早地发现死路。',
+  mc: '<b>最小冲突</b>：先随便给所有区域涂上颜色，然后反复挑一个有冲突的区域，换成<b>冲突最少</b>的颜色。是一种局部搜索，对大规模问题往往很快，但不能证明无解。'
+};
+
+// ---------- 澳大利亚（示意轮廓）与随机地图 ----------
+const AU = {
+  vars: ['WA', 'NT', 'SA', 'Q', 'NSW', 'V', 'T'],
+  names: { WA: '西澳 WA', NT: '北领地 NT', SA: '南澳 SA', Q: '昆士兰 Q', NSW: '新南威尔士 NSW', V: '维多利亚 V', T: '塔斯马尼亚 T' },
+  edges: [['WA', 'NT'], ['WA', 'SA'], ['NT', 'SA'], ['NT', 'Q'], ['SA', 'Q'], ['SA', 'NSW'], ['SA', 'V'], ['Q', 'NSW'], ['NSW', 'V']],
+  shapes: {
+    WA: [[2, 30], [18, 18], [34, 12], [34, 62], [22, 66], [6, 62], [2, 48]],
+    NT: [[34, 12], [44, 6], [56, 10], [56, 40], [34, 40]],
+    SA: [[34, 40], [62, 40], [62, 72], [54, 66], [46, 62], [34, 62]],
+    Q: [[56, 10], [60, 2], [66, 14], [74, 24], [86, 38], [90, 48], [62, 48], [62, 40], [56, 40]],
+    NSW: [[62, 48], [90, 48], [86, 62], [80, 70], [62, 64]],
+    V: [[62, 64], [80, 70], [72, 76], [62, 72]],
+    T: [[70, 82], [78, 82], [76, 90], [70, 89]]
+  },
+  label: { WA: [17, 42], NT: [45, 24], SA: [47, 52], Q: [72, 33], NSW: [75, 57], V: [69, 70], T: [74, 86] },
+  fixedOrder: ['WA', 'NT', 'NSW', 'Q', 'SA', 'V', 'T']
+};
+function randomMap(n) {
+  const pts = [];
+  while (pts.length < n) {
+    const p = [6 + Math.random() * 88, 6 + Math.random() * 82];
+    if (pts.every(q => Math.hypot(p[0] - q[0], p[1] - q[1]) > 12)) pts.push(p);
+  }
+  // 贪心三角剖分：按长度从短到长加边，跳过与已有边相交的
+  const cross = (a, b, c, d) => {
+    const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+    return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
+  };
+  const cand = [];
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) cand.push([i, j, Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1])]);
+  cand.sort((a, b) => a[2] - b[2]);
+  const E = [];
+  for (const [i, j, d] of cand) if (!E.some(([a, b]) => a !== i && a !== j && b !== i && b !== j && cross(pts[i], pts[j], pts[a], pts[b]))) E.push([i, j, d]);
+  const med = E.map(e => e[2]).sort((a, b) => a - b)[E.length >> 1];
+  const kept = E.filter(e => e[2] < med * 1.5);
+  const vars = pts.map((_, i) => 'R' + (i + 1));
+  return { vars, names: Object.fromEntries(vars.map(v => [v, v])), edges: kept.map(([i, j]) => [vars[i], vars[j]]),
+    pos: Object.fromEntries(vars.map((v, i) => [v, pts[i]])), fixedOrder: vars.slice() };
+}
+
+let P = null, K = 3, S = null, playing = false, timer = null, randMap = null;
+let NB = {};
+
+function loadProblem() {
+  const v = $('#problem').value;
+  if (v.startsWith('au')) { P = AU; K = v === 'au2' ? 2 : 3; }
+  else { if (!randMap) randMap = randomMap(20); P = randMap; K = v === 'r3' ? 3 : 4; }
+  $('#newMap').disabled = !v.startsWith('r');
+  $('#fixedOpt').textContent = P === AU ? '固定顺序：WA, NT, NSW, Q, SA, V, T' : '固定顺序：R1, R2, R3, …';
+  NB = {}; for (const x of P.vars) NB[x] = [];
+  for (const [a, b] of P.edges) { NB[a].push(b); NB[b].push(a); }
+  $('#legend').innerHTML = COLOR_NAMES.slice(0, K).map((n, i) => `<span><i style="background:var(--c${i})"></i>${n}</span>`).join('') +
+    '<span><i style="border:3px solid var(--active)"></i>刚刚赋值的区域</span><span><i style="background:var(--conflict)"></i>冲突</span>';
+  resetRun();
+}
+
+// ---------- 求解器（生成器） ----------
+function conflicts(assign) { let c = 0; for (const [a, b] of P.edges) if (assign[a] !== undefined && assign[a] === assign[b]) c++; return c; }
+function* backtracking(mode, orderMode, st) {
+  const assign = st.assign, dom = st.dom;
+  const unassigned = () => P.vars.filter(v => assign[v] === undefined);
+  const pick = () => {
+    const U = unassigned();
+    if (orderMode === 'fixed') return P.fixedOrder.find(v => assign[v] === undefined);
+    // MRV：剩余值最少；平局时用度启发（与未赋值变量相邻最多）
+    let best = null, bk = null;
+    for (const v of U) {
+      const k = [dom[v].length, -NB[v].filter(n => assign[n] === undefined).length];
+      if (!bk || k[0] < bk[0] || (k[0] === bk[0] && k[1] < bk[1])) { best = v; bk = k; }
+    }
+    return best;
+  };
+  const ac3 = (queue, removed) => {
+    while (queue.length) {
+      const [x, y] = queue.shift();
+      const before = dom[x].length;
+      dom[x] = dom[x].filter(vx => dom[y].some(vy => vy !== vx));
+      if (dom[x].length < before) { removed.push(`${x} 删掉 ${before - dom[x].length} 个颜色`); if (!dom[x].length) return false; for (const z of NB[x]) if (z !== y) queue.push([z, x]); }
+    }
+    return true;
+  };
+  function* bt() {
+    if (!unassigned().length) return true;
+    const v = pick();
+    st.focus = v;
+    for (const val of dom[v].slice()) {
+      const bad = NB[v].find(n => assign[n] === val);
+      if (bad) { st.flash = [v, bad]; yield `尝试 ${P.names[v]} = ${COLOR_NAMES[val]}：与已着色的邻居 ${P.names[bad]} 同色，<b>不行</b>。`; st.flash = null; continue; }
+      assign[v] = val; st.assigns++; st.last = v;
+      const saved = Object.fromEntries(P.vars.map(x => [x, dom[x].slice()]));
+      dom[v] = [val];
+      let ok = true, note = '';
+      if (mode === 'fc') {
+        const changed = [];
+        for (const n of NB[v]) if (assign[n] === undefined && dom[n].includes(val)) { dom[n] = dom[n].filter(c => c !== val); changed.push(n); if (!dom[n].length) ok = false; }
+        note = changed.length ? `前向检查：从 ${changed.map(n => P.names[n]).join('、')} 的值域中删掉${COLOR_NAMES[val]}。` : '';
+        if (!ok) note += `<b>${changed.filter(n => !dom[n].length).map(n => P.names[n]).join('、')} 的值域空了</b>，此路不通。`;
+      } else if (mode === 'mac') {
+        const removed = [];
+        ok = ac3(NB[v].filter(n => assign[n] === undefined).map(n => [n, v]), removed);
+        note = removed.length ? `AC-3 传播：${removed.join('；')}。` : 'AC-3 没有删掉任何值。';
+        if (!ok) note += '<b>出现空值域</b>，此路不通。';
+      }
+      const left = st.assigns === 1 ? '' : '';
+      yield `${P.names[v]} = <b>${COLOR_NAMES[val]}</b>。${note}${left}`;
+      if (ok && (yield* bt())) return true;
+      delete assign[v]; for (const x of P.vars) dom[x] = saved[x]; st.backs++; st.last = null;
+      yield `撤销 ${P.names[v]} = ${COLOR_NAMES[val]}，<b>回溯</b>。`;
+      if (st.assigns > 200000) return false;
+    }
+    return false;
+  }
+  const ok = yield* bt();
+  st.done = true; st.ok = ok; st.focus = null; st.last = null;
+  yield ok ? `<b>找到解！</b>共赋值 ${st.assigns} 次，回溯 ${st.backs} 次。` : `<b>无解。</b>所有可能都试过了（赋值 ${st.assigns} 次，回溯 ${st.backs} 次）。`;
+}
+function* minConflicts(st) {
+  const assign = st.assign, rand = n => Math.floor(Math.random() * n);
+  for (const v of P.vars) assign[v] = rand(K);
+  st.assigns = P.vars.length;
+  yield `随机给所有区域涂色，当前有 ${conflicts(assign)} 对相邻区域同色。`;
+  for (let it = 1; it <= 1000; it++) {
+    const bad = P.vars.filter(v => NB[v].some(n => assign[n] === assign[v]));
+    if (!bad.length) { st.done = true; st.ok = true; st.last = null; yield `<b>找到解！</b>共修改 ${it - 1} 次。`; return; }
+    const v = bad[rand(bad.length)];
+    const cnt = c => NB[v].filter(n => assign[n] === c).length;
+    let best = Infinity, opts = [];
+    for (let c = 0; c < K; c++) { const x = cnt(c); if (x < best) { best = x; opts = [c]; } else if (x === best) opts.push(c); }
+    const old = assign[v]; assign[v] = opts[rand(opts.length)]; st.assigns++; st.backs = it; st.last = v;
+    yield `第 ${it} 次修改：${P.names[v]} 有冲突，把它从${COLOR_NAMES[old]}改成冲突最少的<b>${COLOR_NAMES[assign[v]]}</b>（与 ${best} 个邻居冲突）。现在共 ${conflicts(assign)} 对冲突。`;
+  }
+  st.done = true; st.ok = false;
+  yield '修改 1000 次仍有冲突，停止。最小冲突法不能证明问题无解。';
+}
+function makeRun(algo = $('#algo').value, order = $('#order').value) {
+  const st = { assign: {}, dom: Object.fromEntries(P.vars.map(v => [v, [...Array(K).keys()]])), assigns: 0, backs: 0, done: false, ok: false, last: null, focus: null, flash: null, algo };
+  st.gen = algo === 'mc' ? minConflicts(st) : backtracking(algo, order, st);
+  return st;
+}
+
+// ---------- 绘制 ----------
+function draw() {
+  const svg = $('#map'); svg.innerHTML = '';
+  const el = (tag, a, p = svg) => { const e = document.createElementNS(SVGNS, tag); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+  const isAU = P === AU, sc = 7;
+  svg.setAttribute('viewBox', isAU ? '0 -10 650 670' : '0 0 700 640');
+  const assign = S ? S.assign : {}, dom = S ? S.dom : null;
+  const pos = v => isAU ? [P.label[v][0] * sc, P.label[v][1] * sc] : [P.pos[v][0] * 7, P.pos[v][1] * 7];
+  const fillOf = v => assign[v] !== undefined ? css(`--c${assign[v]}`) : css('--region');
+  const confEdge = ([a, b]) => assign[a] !== undefined && assign[a] === assign[b];
+  if (isAU) {
+    for (const v of P.vars) el('polygon', { points: P.shapes[v].map(([x, y]) => `${x * sc},${y * sc}`).join(' '), fill: fillOf(v),
+      stroke: S && S.last === v ? css('--active') : css('--region-line'), 'stroke-width': S && S.last === v ? 6 : 2, 'stroke-linejoin': 'round' });
+  }
+  if (!isAU || $('#showGraph').checked) {
+    for (const e of P.edges) {
+      const [x1, y1] = pos(e[0]), [x2, y2] = pos(e[1]);
+      const flash = S && S.flash && e.includes(S.flash[0]) && e.includes(S.flash[1]);
+      el('line', { x1, y1, x2, y2, stroke: confEdge(e) || flash ? css('--conflict') : css('--edge'), 'stroke-width': confEdge(e) || flash ? 5 : 2 });
+    }
+  }
+  for (const v of P.vars) {
+    const [x, y] = pos(v);
+    if (!isAU || $('#showGraph').checked) {
+      el('circle', { cx: x, cy: y, r: isAU ? 12 : 16, fill: fillOf(v), stroke: S && S.last === v ? css('--active') : S && S.focus === v ? css('--active') : css('--region-line'), 'stroke-width': S && S.last === v ? 5 : 2 });
+    }
+    const t = el('text', { x, y: isAU && !$('#showGraph').checked ? y : y - (isAU ? 20 : 22), 'text-anchor': 'middle', 'font-size': isAU ? 18 : 15, 'font-weight': 600, fill: css('--text') });
+    t.textContent = isAU ? P.names[v] : v;
+    // 值域小圆点（回溯类算法、未赋值时显示）
+    if (dom && assign[v] === undefined && S.algo !== 'mc') {
+      const d = dom[v], w = 16, y0 = isAU && !$('#showGraph').checked ? y + 20 : y + (isAU ? 26 : 30);
+      for (let c = 0; c < K; c++) {
+        const cx = x + (c - (K - 1) / 2) * w;
+        if (d.includes(c)) el('circle', { cx, cy: y0, r: 6, fill: css(`--c${c}`), stroke: css('--region-line'), 'stroke-width': 1 });
+        else { el('circle', { cx, cy: y0, r: 6, fill: 'none', stroke: css('--edge'), 'stroke-width': 1, 'stroke-dasharray': '2 2' }); }
+      }
+    }
+  }
+}
+function updatePanel(msg) {
+  const st = S;
+  $('#sAssign').textContent = st ? st.assigns : 0;
+  $('#sBk').textContent = $('#algo').value === 'mc' ? '修改次数' : '回溯次数';
+  $('#sBack').textContent = st ? st.backs : 0;
+  $('#sDone').textContent = `${st ? Object.keys(st.assign).length : 0} / ${P.vars.length}`;
+  $('#sConf').textContent = st ? conflicts(st.assign) : 0;
+  if (msg !== undefined) $('#msg').innerHTML = msg;
+}
+
+// ---------- 运行控制 ----------
+function step() {
+  if (!S) S = makeRun();
+  if (S.done) { setPlaying(false); return; }
+  const r = S.gen.next();
+  if (r.done) S.done = true;
+  draw(); updatePanel(r.value);
+  if (S.done) setPlaying(false);
+}
+const STEP_SEC = [3, 2, 1.5, 1, 0.5, 0.25, 0.1, 0.05, 0.01];
+const delay = () => STEP_SEC[+$('#speed').value] * 1000;
+function tick() { if (!playing) return; step(); if (playing) timer = setTimeout(tick, delay()); }
+function setPlaying(p) { playing = p; clearTimeout(timer); $('#play').textContent = p ? '⏸ 暂停' : '▶ 开始'; if (p) tick(); }
+function resetRun(msg = '点击"开始"或"单步"。') { setPlaying(false); S = null; draw(); updatePanel(msg); refreshCompare(); }
+function updateSpeedLabel() { const s = STEP_SEC[+$('#speed').value]; $('#speedVal').textContent = s >= 0.1 ? `${s} 秒` : `${s * 1000} 毫秒`; }
+function setSpeed(v) { $('#speed').value = Math.max(0, Math.min(STEP_SEC.length - 1, v)); updateSpeedLabel(); if (playing) { clearTimeout(timer); timer = setTimeout(tick, delay()); } }
+
+function compareAll() {
+  const tb = $('#cmpTbl tbody'); tb.innerHTML = '';
+  const names = { bt: '回溯', fc: '回溯 + 前向检查', mac: '回溯 + MAC', mc: '最小冲突' };
+  for (const a of ['bt', 'fc', 'mac', 'mc']) for (const o of a === 'mc' ? ['–'] : ['fixed', 'mrv']) {
+    const st = makeRun(a, o); for (const _ of st.gen) {}
+    const tr = document.createElement('tr');
+    if (a === $('#algo').value && (a === 'mc' || o === $('#order').value)) tr.className = 'cur';
+    tr.innerHTML = `<td>${names[a]}</td><td>${o === 'fixed' ? '固定' : o === 'mrv' ? 'MRV+度' : '–'}</td><td>${st.assigns}</td><td>${a === 'mc' ? '–' : st.backs}</td><td>${st.ok ? '✓ 有解' : a === 'mc' ? '未找到' : '无解'}</td>`;
+    tb.appendChild(tr);
+  }
+  $('#cmpTbl').classList.remove('hidden');
+}
+function refreshCompare() { if (!$('#cmpTbl').classList.contains('hidden')) compareAll(); }
+
+// ---------- 事件 ----------
+const onClick = (sel, fn) => $(sel).addEventListener('click', e => { fn(); e.currentTarget.blur(); });
+onClick('#play', () => { if (S && S.done) resetRun(); setPlaying(!playing); });
+onClick('#step', () => { setPlaying(false); step(); });
+onClick('#reset', () => resetRun());
+onClick('#compare', compareAll);
+onClick('#newMap', () => { randMap = randomMap(20); loadProblem(); });
+$('#problem').addEventListener('change', loadProblem);
+$('#algo').addEventListener('change', () => { $('#desc').innerHTML = DESC[$('#algo').value]; $('#orderRow').classList.toggle('hidden', $('#algo').value === 'mc'); resetRun(); });
+$('#order').addEventListener('change', () => resetRun());
+$('#showGraph').addEventListener('change', draw);
+$('#speed').addEventListener('input', () => setSpeed(+$('#speed').value));
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); if (S && S.done) resetRun(); setPlaying(!playing); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); setPlaying(false); step(); }
+  else if (e.key === 'r' || e.key === 'R') resetRun();
+  else if (e.key === '-' || e.key === '_') setSpeed(+$('#speed').value - 1);
+  else if (e.key === '+' || e.key === '=') setSpeed(+$('#speed').value + 1);
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (!/github\.io$|^localhost$|^127\.|^$/.test(location.hostname)) document.querySelectorAll('a.back').forEach(a => a.remove());
+
+$('#desc').innerHTML = DESC.fc;
+updateSpeedLabel();
+loadProblem();
+</script>
