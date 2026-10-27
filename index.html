@@ -25,16 +25,49 @@
   a.demo:hover, a.demo:focus-visible { border-color: var(--accent); }
   a.demo b { color: var(--accent); font-size: 18px; }
   a.demo span { display: block; color: var(--muted); font-size: 14px; margin-top: 4px; }
+  a.demo em { font-style: normal; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; margin-right: 8px; vertical-align: 2px; }
 </style>
 </head>
 <body>
 <main>
   <h1>人工智能导论 · 课堂演示</h1>
-  <p class="sub">2027 春季学期 · 交互式算法演示，可在浏览器中直接操作</p>
+  <p class="sub">2027 春季学期 · 教材：Russell &amp; Norvig《人工智能：现代方法》（第 4 版）· 交互式算法演示，可在浏览器中直接操作</p>
   <ul>
     <li><a class="demo" href="01-search/">
-      <b>搜索算法：A* 与无信息搜索</b>
+      <em>第 3 章</em><b>搜索算法：A* 与无信息搜索</b>
       <span>在网格地图上单步运行 BFS、DFS、一致代价、贪婪和 A* 搜索，对比扩展节点数与路径代价。</span>
+    </a></li>
+    <li><a class="demo" href="01-search/romania.html">
+      <em>第 3 章</em><b>罗马尼亚地图：从 Arad 到 Bucharest</b>
+      <span>教材图 3.1 的经典例子，用直线距离作启发函数，对比各算法找到的路线。</span>
+    </a></li>
+    <li><a class="demo" href="02-8puzzle/">
+      <em>第 3 章</em><b>八数码：启发函数与 A*</b>
+      <span>错位数 h₁ 与曼哈顿距离 h₂ 的对比，观察子节点生成、解路径播放和有效分支因子。</span>
+    </a></li>
+    <li><a class="demo" href="03-local-search/">
+      <em>第 4 章</em><b>局部搜索：八皇后</b>
+      <span>爬山法、随机重启、模拟退火、遗传算法，棋盘上显示每一步候选位置的 h 值。</span>
+    </a></li>
+    <li><a class="demo" href="04-games/">
+      <em>第 5 章</em><b>博弈：Minimax 与 Alpha-Beta</b>
+      <span>在教材图 5.2 的博弈树上单步运行，看哪些分支被剪掉；还可以和电脑下井字棋。</span>
+    </a></li>
+    <li><a class="demo" href="05-csp/">
+      <em>第 6 章</em><b>约束满足：地图着色</b>
+      <span>澳大利亚地图着色，对比回溯、前向检查、MAC 和最小冲突，观察值域的变化。</span>
+    </a></li>
+    <li><a class="demo" href="06-mdp/">
+      <em>第 16 章</em><b>MDP：4×3 网格世界</b>
+      <span>值迭代与策略迭代，查看每个格子的贝尔曼更新，调节奖励看最优策略如何改变。</span>
+    </a></li>
+    <li><a class="demo" href="07-ml/">
+      <em>第 19 章</em><b>机器学习：决策树与梯度下降</b>
+      <span>用信息增益为餐馆等位问题建决策树；在损失曲面上观察学习率对梯度下降的影响。</span>
+    </a></li>
+    <li><a class="demo" href="08-rl/">
+      <em>第 22 章</em><b>强化学习：Q-learning</b>
+      <span>智能体在网格世界中边走边学，Q 值逐渐收敛到真实效用。</span>
     </a></li>
   </ul>
 </main>
