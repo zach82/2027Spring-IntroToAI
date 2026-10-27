@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>人工智能导论 课堂演示</title>
+<style>
+  :root { --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0; --accent: #2563eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449; --accent: #60a5fa; color-scheme: dark; }
+  }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+    line-height: 1.6;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 16px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  a.demo {
+    display: block; padding: 16px 18px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel); color: inherit; text-decoration: none;
+  }
+  a.demo:hover, a.demo:focus-visible { border-color: var(--accent); }
+  a.demo b { color: var(--accent); font-size: 18px; }
+  a.demo span { display: block; color: var(--muted); font-size: 14px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>人工智能导论 · 课堂演示</h1>
+  <p class="sub">2027 春季学期 · 交互式算法演示，可在浏览器中直接操作</p>
+  <ul>
+    <li><a class="demo" href="01-search/">
+      <b>搜索算法：A* 与无信息搜索</b>
+      <span>在网格地图上单步运行 BFS、DFS、一致代价、贪婪和 A* 搜索，对比扩展节点数与路径代价。</span>
+    </a></li>
+  </ul>
+</main>
+</body>
+</html>
