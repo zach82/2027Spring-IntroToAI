@@ -1,0 +1,458 @@
+<meta charset="utf-8">
+<title>博弈搜索 Minimax</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 布局：左侧博弈树或井字棋盘（上方切换），右侧控制面板 */
+  :root {
+    --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --on-accent: #ffffff;
+    --surface2: #f1f5f9; --control: #ffffff;
+    --note-bg: #fffbeb; --note-border: #fde68a; --cur-bg: #eff6ff;
+    --max: #2563eb; --min: #dc2626; --node-fill: #ffffff; --edge: #94a3b8; --edge-done: #475569;
+    --pruned: #cbd5e1; --active: #f59e0b; --best: #16a34a; --halo: #f8fafc;
+    --x: #2563eb; --o: #dc2626; --cell: #ffffff; --win: #bbf7d0;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --cur-bg: #1e3a8a;
+    --max: #60a5fa; --min: #f87171; --node-fill: #0f172a; --edge: #64748b; --edge-done: #cbd5e1;
+    --pruned: #334155; --active: #fbbf24; --best: #4ade80; --halo: #0b1220;
+    --x: #60a5fa; --o: #f87171; --cell: #0f172a; --win: #166534;
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --cur-bg: #1e3a8a;
+    --max: #60a5fa; --min: #f87171; --node-fill: #0f172a; --edge: #64748b; --edge-done: #cbd5e1;
+    --pruned: #334155; --active: #fbbf24; --best: #4ade80; --halo: #0b1220;
+    --x: #60a5fa; --o: #f87171; --cell: #0f172a; --win: #166534;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif; font-size: 15px; }
+  header { padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header a { color: var(--accent); font-size: 14px; text-decoration: none; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px;
+    padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .left { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 10px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .stage { flex: 1; min-height: 300px; display: flex; align-items: center; justify-content: center; overflow: auto; }
+  #tree { width: 100%; height: 100%; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; font-size: 14px; color: var(--muted); }
+  aside { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-y: auto; min-height: 0; min-width: 0; }
+  aside h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 8px; letter-spacing: .05em; }
+  aside h2:first-child { margin-top: 0; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .row label { min-width: 64px; color: var(--muted); }
+  select, button { font: inherit; color: var(--text); }
+  select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); flex: 1; min-width: 0; }
+  button { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); cursor: pointer; }
+  button:hover { background: var(--surface2); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); min-width: 88px; }
+  button.primary:hover { background: var(--accent-hover); }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .check { display: inline-flex; align-items: center; gap: 4px; }
+  .desc { background: var(--surface2); border-radius: 6px; padding: 10px 12px; line-height: 1.6; font-size: 14px; }
+  .desc b { color: var(--accent); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .msg { min-height: 48px; background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 6px; padding: 8px 10px; line-height: 1.6; font-size: 14px; flex: 1; }
+  .kbd { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .row .kbd { margin-top: 0; }
+  .speedval { min-width: 56px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .hidden { display: none !important; }
+  /* 博弈树文字 */
+  #tree text { paint-order: stroke; stroke: var(--halo); stroke-width: 4px; }
+  /* 井字棋 */
+  .ttt { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: min(60vh, 420px); max-width: 100%; aspect-ratio: 1; }
+  .ttt button { font-size: clamp(36px, 10vh, 80px); font-weight: 700; background: var(--cell); border: 2px solid var(--border); border-radius: 10px; position: relative; padding: 0; }
+  .ttt button.X { color: var(--x); } .ttt button.O { color: var(--o); }
+  .ttt button.win { background: var(--win); }
+  .ttt button .hint { position: absolute; inset: auto 0 6px 0; font-size: 14px; font-weight: 600; color: var(--muted); }
+  @media (max-width: 900px) {
+    html, body { height: auto; }
+    main { grid-template-columns: minmax(0, 1fr); flex: none; }
+    .left, aside { min-height: auto; }
+    .stage { height: 60vh; flex: none; }
+    aside { overflow: visible; }
+  }
+</style>
+
+<header>
+  <h1>博弈搜索：Minimax 与 Alpha-Beta 剪枝</h1>
+  <span class="sub">人工智能导论 · 第 5 章 对抗搜索 · 教材图 5.2、5.5</span>
+  <a class="back" href="../">← 全部演示</a>
+</header>
+<main>
+  <section class="left">
+    <div class="tabs" role="tablist">
+      <button id="tabTree" role="tab" aria-selected="true">博弈树（单步讲解）</button>
+      <button id="tabTTT" role="tab" aria-selected="false">井字棋人机对战</button>
+    </div>
+    <div class="stage" id="treeStage"><svg id="tree" role="img" aria-label="博弈树"></svg></div>
+    <div class="legend" id="treeLegend">
+      <span><b style="color:var(--max)">▲</b> MAX 节点（轮到我方，取最大值）</span>
+      <span><b style="color:var(--min)">▼</b> MIN 节点（轮到对手，取最小值）</span>
+      <span><b style="color:var(--active)">●</b> 正在访问</span>
+      <span><b style="color:var(--best)">━</b> 最佳走法</span>
+      <span><b style="color:var(--pruned)">┅</b> 被剪掉的分支</span>
+    </div>
+    <div class="stage hidden" id="tttStage"><div class="ttt" id="ttt"></div></div>
+  </section>
+
+  <aside>
+    <div id="treePanel">
+      <h2>博弈树</h2>
+      <div class="row">
+        <select id="treeSel">
+          <option value="book" selected>教材图 5.2 的两层博弈树</option>
+          <option value="r33">随机树：3 层，每个节点 3 个分支</option>
+          <option value="r42">随机树：4 层，每个节点 2 个分支</option>
+          <option value="r43">随机树：4 层，每个节点 3 个分支</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="algo">算法</label>
+        <select id="algo">
+          <option value="mm">Minimax</option>
+          <option value="ab" selected>Alpha-Beta 剪枝</option>
+        </select>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="goodOrder">先访问最好的子节点（理想的走法排序）</label>
+      </div>
+      <div class="desc" id="desc"></div>
+
+      <h2>运行</h2>
+      <div class="row">
+        <button class="primary" id="play">▶ 开始</button>
+        <button id="step">⏭ 单步</button>
+        <button id="reset">↺ 重置</button>
+        <button id="newTree">新随机树</button>
+      </div>
+      <div class="row">
+        <label for="speed">每步时间</label>
+        <span class="kbd">慢</span>
+        <input type="range" id="speed" min="0" max="8" step="1" value="3">
+        <span class="kbd">快</span>
+        <span id="speedVal" class="speedval">1 秒</span>
+      </div>
+      <div class="kbd">快捷键：空格 开始/暂停，→ 单步，R 重置，− / + 调慢 / 调快</div>
+
+      <h2>当前状态</h2>
+      <div class="stats">
+        <div class="stat"><div class="k">已访问节点</div><div class="v" id="sVisit">0</div></div>
+        <div class="stat"><div class="k">被剪掉的叶节点</div><div class="v" id="sPruned">0</div></div>
+        <div class="stat"><div class="k">全部节点</div><div class="v" id="sTotal">0</div></div>
+        <div class="stat"><div class="k">根节点的值</div><div class="v" id="sRoot">–</div></div>
+      </div>
+      <div class="row" style="margin-top:8px"><div class="msg" id="msg">点击"单步"开始。</div></div>
+    </div>
+
+    <div id="tttPanel" class="hidden">
+      <h2>对局设置</h2>
+      <div class="row">
+        <label for="human">你执</label>
+        <select id="human"><option value="X" selected>X（先手）</option><option value="O">O（后手）</option></select>
+      </div>
+      <div class="row"><label class="check"><input type="checkbox" id="hints">在空格上显示每步走法的 minimax 值</label></div>
+      <div class="desc">值站在 X 的角度：<b>+1</b> X 必胜，<b>0</b> 和棋，<b>−1</b> O 必胜（双方都走最优）。井字棋双方都不犯错时一定是和棋。</div>
+      <div class="row" style="margin-top:8px"><button class="primary" id="newGame">新开一局</button></div>
+
+      <h2>电脑上一步的搜索量</h2>
+      <div class="stats">
+        <div class="stat"><div class="k">Minimax 搜索节点</div><div class="v" id="tMM">–</div></div>
+        <div class="stat"><div class="k">Alpha-Beta 搜索节点</div><div class="v" id="tAB">–</div></div>
+      </div>
+      <div class="row" style="margin-top:8px"><div class="msg" id="tmsg">轮到你走。</div></div>
+      <div class="kbd">从空棋盘开始，完整的 Minimax 要搜索 549,946 个节点；Alpha-Beta 剪枝能省掉大部分。</div>
+    </div>
+  </aside>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const SVGNS = 'http://www.w3.org/2000/svg';
+const INF = Infinity;
+const fmtV = v => v === INF ? '+∞' : v === -INF ? '−∞' : String(v);
+
+const DESC = {
+  mm: '<b>Minimax</b>：从叶节点往上回传。MAX 节点取子节点的<b>最大值</b>，MIN 节点取<b>最小值</b>。要把整棵树都看一遍。',
+  ab: '<b>Alpha-Beta 剪枝</b>：α 是 MAX 目前能保证的最好值，β 是 MIN 目前能保证的最好值。一旦某个节点的值已经不可能影响上层的选择（<b>α ≥ β</b>），剩下的子节点就不用看了。结果和 Minimax <b>完全相同</b>，但访问的节点更少。'
+};
+
+// ---------- 博弈树 ----------
+let tree = null, T = null, playing = false, timer = null;
+function buildBook() {
+  const leaf = v => ({ leaf: true, value: v });
+  return { name: 'A', max: true, kids: [
+    { name: 'B', max: false, kids: [leaf(3), leaf(12), leaf(8)] },
+    { name: 'C', max: false, kids: [leaf(2), leaf(4), leaf(6)] },
+    { name: 'D', max: false, kids: [leaf(14), leaf(5), leaf(2)] }] };
+}
+function buildRandom(depth, b) {
+  let ch = 0;
+  const mk = (d, max) => {
+    if (d === depth) return { leaf: true, value: Math.floor(Math.random() * 21) };
+    const n = { name: String.fromCharCode(65 + ch++), max, kids: [] };
+    for (let i = 0; i < b; i++) n.kids.push(mk(d + 1, !max));
+    return n;
+  };
+  return mk(0, true);
+}
+function minimaxValue(n) { if (n.leaf) return n.value; const vs = n.kids.map(minimaxValue); return n.max ? Math.max(...vs) : Math.min(...vs); }
+function count(n) { return 1 + (n.leaf ? 0 : n.kids.reduce((t, k) => t + count(k), 0)); }
+function countLeaves(n) { return n.leaf ? 1 : n.kids.reduce((t, k) => t + countLeaves(k), 0); }
+function reset(n) { n.v = undefined; n.alpha = undefined; n.beta = undefined; n.state = 0; n.pruned = false; n.bestIdx = -1; if (!n.leaf) n.kids.forEach(reset); }
+function markPruned(n) { n.pruned = true; if (!n.leaf) n.kids.forEach(markPruned); }
+function order(n, good) {  // 理想排序：MAX 节点先看值大的，MIN 节点先看值小的
+  if (n.leaf) return;
+  if (!n.orig) n.orig = n.kids.slice();
+  n.kids = n.orig.slice();
+  if (good) n.kids.sort((a, b) => n.max ? minimaxValue(b) - minimaxValue(a) : minimaxValue(a) - minimaxValue(b));
+  n.kids.forEach(k => order(k, good));
+}
+const label = n => n.leaf ? `叶节点 ${n.value}` : `${n.max ? 'MAX' : 'MIN'} 节点 ${n.name}`;
+
+function* search(n, alpha, beta, ab) {
+  n.state = 1; n.alpha = alpha; n.beta = beta; T.visited++; T.active = n;
+  if (n.leaf) {
+    n.v = n.value; n.state = 2;
+    yield `访问叶节点，效用值 = <b>${n.value}</b>。`;
+    return n.value;
+  }
+  n.v = n.max ? -INF : INF;
+  yield `访问 ${label(n)}${ab ? `，带入 α = ${fmtV(alpha)}，β = ${fmtV(beta)}` : ''}；初始值 v = ${fmtV(n.v)}。`;
+  for (let i = 0; i < n.kids.length; i++) {
+    const cv = yield* search(n.kids[i], alpha, beta, ab);
+    T.active = n;
+    const old = n.v;
+    if (n.max ? cv > n.v : cv < n.v) { n.v = cv; n.bestIdx = i; }
+    let m = `回到 ${label(n)}：子节点值为 ${cv}，${n.max ? '取最大' : '取最小'} → v = <b>${fmtV(n.v)}</b>${n.v === old ? '（不变）' : ''}。`;
+    if (ab) {
+      if (n.max ? n.v >= beta : n.v <= alpha) {
+        const rest = n.kids.slice(i + 1); rest.forEach(markPruned);
+        T.pruned += rest.reduce((t, k) => t + countLeaves(k), 0);
+        m += n.max ? ` v = ${n.v} ≥ β = ${fmtV(beta)}：MIN 不会让局面走到这里，` : ` v = ${n.v} ≤ α = ${fmtV(alpha)}：MAX 不会选这条路，`;
+        m += rest.length ? `<b>剪掉剩下的 ${rest.length} 个子节点</b>。` : '后面没有子节点了。';
+        n.state = 2; yield m; return n.v;
+      }
+      if (n.max) alpha = Math.max(alpha, n.v); else beta = Math.min(beta, n.v);
+      n.alpha = alpha; n.beta = beta;
+      m += ` 更新为 α = ${fmtV(alpha)}，β = ${fmtV(beta)}。`;
+    }
+    yield m;
+  }
+  n.state = 2;
+  yield `${label(n)} 的全部子节点都看完了，值确定为 <b>${n.v}</b>。`;
+  return n.v;
+}
+
+// 树的布局与绘制
+function layoutTree(root) {
+  let x = 0, depth = 0;
+  const walk = (n, d) => { n.depth = d; depth = Math.max(depth, d); if (n.leaf) { n.x = x++; return; } n.kids.forEach(k => walk(k, d + 1)); n.x = (n.kids[0].x + n.kids[n.kids.length - 1].x) / 2; };
+  walk(root, 0);
+  return { leaves: x, depth };
+}
+function drawTree() {
+  const svg = $('#tree'); svg.innerHTML = '';
+  const { leaves, depth } = layoutTree(tree);
+  const dx = 64, dy = 110, W = Math.max(leaves * dx, 400), H = depth * dy + 110;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const px = n => (n.x + 0.5) * (W / leaves), py = n => 50 + n.depth * dy;
+  const el = (tag, a, p = svg) => { const e = document.createElementNS(SVGNS, tag); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+  const bestPath = new Set();
+  if (T && T.done) { let n = tree; while (!n.leaf && n.bestIdx >= 0) { bestPath.add(n.kids[n.bestIdx]); n = n.kids[n.bestIdx]; } }
+  const drawEdges = n => {
+    if (n.leaf) return;
+    n.kids.forEach(k => {
+      const best = bestPath.has(k);
+      el('line', { x1: px(n), y1: py(n), x2: px(k), y2: py(k),
+        stroke: best ? css('--best') : k.pruned ? css('--pruned') : k.state ? css('--edge-done') : css('--edge'),
+        'stroke-width': best ? 5 : 2, 'stroke-dasharray': k.pruned ? '6 6' : '' });
+      drawEdges(k);
+    });
+  };
+  drawEdges(tree);
+  const drawNodes = n => {
+    const x = px(n), y = py(n), r = 22;
+    const color = n.leaf ? css('--edge') : n.max ? css('--max') : css('--min');
+    const isActive = T && T.active === n && !T.done;
+    const stroke = isActive ? css('--active') : n.pruned ? css('--pruned') : color;
+    if (n.leaf) el('rect', { x: x - 18, y: y - 16, width: 36, height: 32, rx: 4, fill: css('--node-fill'), stroke, 'stroke-width': isActive ? 5 : 2 });
+    else {
+      const pts = n.max ? `${x},${y - r} ${x - r * 1.1},${y + r * 0.75} ${x + r * 1.1},${y + r * 0.75}` : `${x},${y + r} ${x - r * 1.1},${y - r * 0.75} ${x + r * 1.1},${y - r * 0.75}`;
+      el('polygon', { points: pts, fill: css('--node-fill'), stroke, 'stroke-width': isActive ? 5 : 3, 'stroke-linejoin': 'round' });
+    }
+    const shown = n.leaf ? n.value : (n.v === undefined ? '' : fmtV(n.v));
+    const t = el('text', { x, y: y + (n.leaf ? 6 : n.max ? 10 : 0), 'text-anchor': 'middle', 'font-size': 17, 'font-weight': 700,
+      fill: n.pruned ? css('--pruned') : css('--text') });
+    t.textContent = shown;
+    if (!n.leaf) {
+      const nm = el('text', { x: x - 30, y: y - (n.max ? 12 : 16), 'text-anchor': 'end', 'font-size': 14, fill: color }); nm.textContent = n.name;
+      if (T && $('#algo').value === 'ab' && n.alpha !== undefined && !n.pruned) {
+        const ab = el('text', { x: x + 30, y: y - 6, 'text-anchor': 'start', 'font-size': 13, fill: css('--muted') });
+        ab.textContent = `[${fmtV(n.alpha)}, ${fmtV(n.beta)}]`;
+      }
+      n.kids.forEach(drawNodes);
+    }
+  };
+  drawNodes(tree);
+}
+function updateTreePanel(msg) {
+  $('#sVisit').textContent = T ? T.visited : 0;
+  $('#sPruned').textContent = T ? T.pruned : 0;
+  $('#sTotal').textContent = count(tree);
+  $('#sRoot').textContent = T && T.done ? tree.v : '–';
+  if (msg !== undefined) $('#msg').innerHTML = msg;
+}
+function newTree() {
+  const v = $('#treeSel').value;
+  tree = v === 'book' ? buildBook() : v === 'r33' ? buildRandom(3, 3) : v === 'r42' ? buildRandom(4, 2) : buildRandom(4, 3);
+  $('#newTree').disabled = v === 'book';
+  resetTree();
+}
+function resetTree(msg = '点击"单步"开始。方括号里是 [α, β]。') {
+  setPlaying(false); order(tree, $('#goodOrder').checked); reset(tree); T = null; drawTree(); updateTreePanel(msg);
+}
+function step() {
+  if (!T) { T = { visited: 0, pruned: 0, done: false, active: null }; T.gen = search(tree, -INF, INF, $('#algo').value === 'ab'); }
+  if (T.done) { setPlaying(false); return; }
+  const r = T.gen.next();
+  if (r.done) {
+    T.done = true; T.active = null;
+    const best = tree.kids[tree.bestIdx];
+    updateTreePanel(`<b>完成！</b>根节点的值为 ${r.value}，最佳走法是走向 ${best.leaf ? '值为 ' + best.value + ' 的叶节点' : best.name}。共访问 ${T.visited} 个节点${$('#algo').value === 'ab' ? `，剪掉 ${T.pruned} 个叶节点` : ''}。`);
+  } else updateTreePanel(r.value);
+  drawTree();
+  if (T.done) setPlaying(false);
+}
+const STEP_SEC = [3, 2, 1.5, 1, 0.5, 0.25, 0.1, 0.05, 0.01];
+const delay = () => STEP_SEC[+$('#speed').value] * 1000;
+function tick() { if (!playing) return; step(); if (playing) timer = setTimeout(tick, delay()); }
+function setPlaying(p) { playing = p; clearTimeout(timer); $('#play').textContent = p ? '⏸ 暂停' : '▶ 开始'; if (p) tick(); }
+function updateSpeedLabel() { const s = STEP_SEC[+$('#speed').value]; $('#speedVal').textContent = s >= 0.1 ? `${s} 秒` : `${s * 1000} 毫秒`; }
+function setSpeed(v) { $('#speed').value = Math.max(0, Math.min(STEP_SEC.length - 1, v)); updateSpeedLabel(); if (playing) { clearTimeout(timer); timer = setTimeout(tick, delay()); } }
+
+// ---------- 井字棋 ----------
+const LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+let board = Array(9).fill(''), human = 'X', gameOver = false;
+const winner = b => { for (const l of LINES) if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[1]] === b[l[2]]) return { p: b[l[0]], line: l }; return b.every(c => c) ? { p: 'draw' } : null; };
+const toMove = b => b.filter(c => c).length % 2 ? 'O' : 'X';
+let nodes = 0;
+// 返回站在 X 角度的值：+1 / 0 / -1
+function mm(b) {
+  nodes++;
+  const w = winner(b); if (w) return w.p === 'X' ? 1 : w.p === 'O' ? -1 : 0;
+  const p = toMove(b); let best = p === 'X' ? -2 : 2;
+  for (let i = 0; i < 9; i++) if (!b[i]) { b[i] = p; const v = mm(b); b[i] = ''; best = p === 'X' ? Math.max(best, v) : Math.min(best, v); }
+  return best;
+}
+function ab(b, alpha, beta) {
+  nodes++;
+  const w = winner(b); if (w) return w.p === 'X' ? 1 : w.p === 'O' ? -1 : 0;
+  const p = toMove(b);
+  if (p === 'X') { let v = -2; for (let i = 0; i < 9; i++) if (!b[i]) { b[i] = 'X'; v = Math.max(v, ab(b, alpha, beta)); b[i] = ''; alpha = Math.max(alpha, v); if (alpha >= beta) break; } return v; }
+  let v = 2; for (let i = 0; i < 9; i++) if (!b[i]) { b[i] = 'O'; v = Math.min(v, ab(b, alpha, beta)); b[i] = ''; beta = Math.min(beta, v); if (alpha >= beta) break; } return v;
+}
+function moveValues(b) { const out = {}; const p = toMove(b); for (let i = 0; i < 9; i++) if (!b[i]) { b[i] = p; out[i] = mm(b); b[i] = ''; } return out; }
+function renderTTT() {
+  const box = $('#ttt'); box.innerHTML = '';
+  const w = winner(board);
+  const vals = $('#hints').checked && !w ? moveValues(board) : null;
+  for (let i = 0; i < 9; i++) {
+    const b = document.createElement('button'); b.className = board[i];
+    b.textContent = board[i]; b.setAttribute('aria-label', `第 ${(i / 3 | 0) + 1} 行第 ${i % 3 + 1} 列`);
+    if (w && w.line && w.line.includes(i)) b.classList.add('win');
+    if (vals && i in vals) { const s = document.createElement('span'); s.className = 'hint'; s.textContent = (vals[i] > 0 ? '+' : vals[i] < 0 ? '−' : '') + Math.abs(vals[i]); b.appendChild(s); }
+    b.addEventListener('click', () => humanMove(i));
+    box.appendChild(b);
+  }
+}
+function checkEnd() {
+  const w = winner(board); if (!w) return false;
+  gameOver = true;
+  $('#tmsg').innerHTML = w.p === 'draw' ? '<b>和棋。</b>双方都走最优时，井字棋一定是和棋。' : w.p === human ? '<b>你赢了！</b>' : '<b>电脑赢了。</b>';
+  renderTTT(); return true;
+}
+function aiMove() {
+  const p = toMove(board);
+  nodes = 0; mm(board.slice()); const nMM = nodes;
+  let best = -1, bestV = p === 'X' ? -2 : 2; nodes = 0;
+  for (let i = 0; i < 9; i++) if (!board[i]) {
+    board[i] = p; const v = ab(board, -2, 2); board[i] = '';
+    if (p === 'X' ? v > bestV : v < bestV) { bestV = v; best = i; }
+  }
+  const nAB = nodes;
+  board[best] = p;
+  $('#tMM').textContent = nMM.toLocaleString(); $('#tAB').textContent = nAB.toLocaleString();
+  if (!checkEnd()) { $('#tmsg').innerHTML = `电脑走在第 ${(best / 3 | 0) + 1} 行第 ${best % 3 + 1} 列（局面值 ${bestV > 0 ? '+1' : bestV}）。轮到你。`; renderTTT(); }
+}
+function humanMove(i) {
+  if (gameOver || board[i] || toMove(board) !== human) return;
+  board[i] = human; renderTTT();
+  if (checkEnd()) return;
+  $('#tmsg').textContent = '电脑思考中…';
+  setTimeout(aiMove, 250);
+}
+function newGame() {
+  board = Array(9).fill(''); gameOver = false; human = $('#human').value;
+  $('#tMM').textContent = '–'; $('#tAB').textContent = '–';
+  renderTTT();
+  if (human === 'O') { $('#tmsg').textContent = '电脑先走…'; setTimeout(aiMove, 250); } else $('#tmsg').textContent = '轮到你走。';
+}
+
+// ---------- 页面切换与事件 ----------
+function showTab(tree) {
+  $('#tabTree').setAttribute('aria-selected', tree); $('#tabTTT').setAttribute('aria-selected', !tree);
+  for (const id of ['#treeStage', '#treeLegend', '#treePanel']) $(id).classList.toggle('hidden', !tree);
+  for (const id of ['#tttStage', '#tttPanel']) $(id).classList.toggle('hidden', tree);
+  if (!tree) { setPlaying(false); renderTTT(); }
+}
+const onClick = (sel, fn) => $(sel).addEventListener('click', e => { fn(); e.currentTarget.blur(); });
+onClick('#tabTree', () => showTab(true));
+onClick('#tabTTT', () => showTab(false));
+onClick('#play', () => { if (T && T.done) resetTree(); setPlaying(!playing); });
+onClick('#step', () => { setPlaying(false); step(); });
+onClick('#reset', () => resetTree());
+onClick('#newTree', newTree);
+onClick('#newGame', newGame);
+$('#treeSel').addEventListener('change', newTree);
+$('#algo').addEventListener('change', () => { $('#desc').innerHTML = DESC[$('#algo').value]; resetTree(); });
+$('#goodOrder').addEventListener('change', () => resetTree());
+$('#hints').addEventListener('change', renderTTT);
+$('#human').addEventListener('change', newGame);
+$('#speed').addEventListener('input', () => setSpeed(+$('#speed').value));
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || $('#treePanel').classList.contains('hidden')) return;
+  if (e.code === 'Space') { e.preventDefault(); if (T && T.done) resetTree(); setPlaying(!playing); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); setPlaying(false); step(); }
+  else if (e.key === 'r' || e.key === 'R') resetTree();
+  else if (e.key === '-' || e.key === '_') setSpeed(+$('#speed').value - 1);
+  else if (e.key === '+' || e.key === '=') setSpeed(+$('#speed').value + 1);
+});
+const redraw = () => { drawTree(); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (!/github\.io$|^localhost$|^127\.|^$/.test(location.hostname)) document.querySelectorAll('a.back').forEach(a => a.remove());
+
+$('#desc').innerHTML = DESC.ab;
+updateSpeedLabel();
+newTree();
+newGame();
+</script>
