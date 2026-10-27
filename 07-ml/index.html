@@ -1,0 +1,396 @@
+<meta charset="utf-8">
+<title>决策树与梯度下降</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 布局：上方切换两个演示；左侧主画面，右侧控制面板 */
+  :root {
+    --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --on-accent: #ffffff;
+    --surface2: #f1f5f9; --control: #ffffff;
+    --note-bg: #fffbeb; --note-border: #fde68a; --cur-bg: #eff6ff; --best-bg: #ecfdf5;
+    --yes: #16a34a; --no: #dc2626; --yes-bg: #dcfce7; --no-bg: #fee2e2; --node: #ffffff; --edge: #94a3b8; --active: #f59e0b; --halo: #f8fafc;
+    --point: #2563eb; --line: #ea580c; --heat: #2563eb; --path: #ea580c; --star: #16a34a; --grid: #e2e8f0; --dim: #cbd5e1;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --cur-bg: #1e3a8a; --best-bg: #064e3b;
+    --yes: #4ade80; --no: #f87171; --yes-bg: #14532d; --no-bg: #7f1d1d; --node: #0f172a; --edge: #64748b; --active: #fbbf24; --halo: #0b1220;
+    --point: #60a5fa; --line: #fb923c; --heat: #60a5fa; --path: #fb923c; --star: #4ade80; --grid: #273449; --dim: #334155;
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --cur-bg: #1e3a8a; --best-bg: #064e3b;
+    --yes: #4ade80; --no: #f87171; --yes-bg: #14532d; --no-bg: #7f1d1d; --node: #0f172a; --edge: #64748b; --active: #fbbf24; --halo: #0b1220;
+    --point: #60a5fa; --line: #fb923c; --heat: #60a5fa; --path: #fb923c; --star: #4ade80; --grid: #273449; --dim: #334155;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif; font-size: 15px; }
+  header { padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header a { color: var(--accent); font-size: 14px; text-decoration: none; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px;
+    padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .left { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 10px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .pane { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+  #treeBox { flex: 1; min-height: 220px; }
+  #tree { width: 100%; height: 100%; }
+  #tree text { paint-order: stroke; stroke: var(--halo); stroke-width: 4px; }
+  .tblwrap { overflow-x: auto; flex: none; }
+  .data { font-size: 13px; }
+  .data td, .data th { text-align: center; padding: 3px 5px; }
+  .data tr.dim td { opacity: .3; }
+  .data td.yes { color: var(--yes); font-weight: 700; } .data td.no { color: var(--no); font-weight: 700; }
+  .data th.split { background: var(--cur-bg); color: var(--text); }
+  .gdrow { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .gdrow > div { min-width: 0; min-height: 240px; display: flex; flex-direction: column; gap: 4px; }
+  .gdrow canvas { flex: 1; min-height: 0; width: 100%; cursor: crosshair; }
+  .cap { font-size: 13px; color: var(--muted); }
+  aside { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-y: auto; min-height: 0; min-width: 0; }
+  aside h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 8px; letter-spacing: .05em; }
+  aside h2:first-child { margin-top: 0; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .row label { min-width: 64px; color: var(--muted); }
+  select, button { font: inherit; color: var(--text); }
+  select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); flex: 1; min-width: 0; }
+  button { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); cursor: pointer; }
+  button:hover { background: var(--surface2); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); min-width: 88px; }
+  button.primary:hover { background: var(--accent-hover); }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .desc { background: var(--surface2); border-radius: 6px; padding: 10px 12px; line-height: 1.6; font-size: 14px; }
+  .desc b { color: var(--accent); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .msg { min-height: 48px; background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 6px; padding: 8px 10px; line-height: 1.6; font-size: 14px; flex: 1; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  tr.best td { background: var(--best-bg); font-weight: 600; }
+  .kbd { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .row .kbd { margin-top: 0; }
+  .speedval { min-width: 56px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .hidden { display: none !important; }
+  @media (max-width: 900px) {
+    html, body { height: auto; }
+    main { grid-template-columns: minmax(0, 1fr); flex: none; }
+    .left, aside { min-height: auto; }
+    #treeBox { height: 50vh; flex: none; }
+    .gdrow { grid-template-columns: 1fr; }
+    .gdrow > div { height: 45vh; }
+    aside { overflow: visible; }
+  }
+</style>
+
+<header>
+  <h1>从样例中学习：决策树与梯度下降</h1>
+  <span class="sub">人工智能导论 · 第 19 章 从样例中学习 · 教材图 19.3、19.6</span>
+  <a class="back" href="../">← 全部演示</a>
+</header>
+<main>
+  <section class="left">
+    <div class="tabs" role="tablist">
+      <button id="tabDT" role="tab" aria-selected="true">决策树：餐馆等位问题</button>
+      <button id="tabGD" role="tab" aria-selected="false">梯度下降：线性回归</button>
+    </div>
+    <div class="pane" id="paneDT">
+      <div id="treeBox"><svg id="tree" role="img" aria-label="决策树"></svg></div>
+      <div class="tblwrap"><table class="data" id="data"></table></div>
+    </div>
+    <div class="pane hidden" id="paneGD">
+      <div class="gdrow">
+        <div><span class="cap">数据与拟合直线 y = w₀ + w₁x（点击空白处添加数据点）</span><canvas id="scatter"></canvas></div>
+        <div><span class="cap">损失函数 L(w₀, w₁)：颜色越浅损失越小，★ 是最优解（点击设置初始参数）</span><canvas id="surface"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <aside>
+    <div id="panelDT">
+      <div class="desc"><b>ID3 决策树学习</b>：在每个节点上，计算每个属性的<b>信息增益</b> = 划分前的熵 − 划分后的加权平均熵，选增益最大的属性来划分；样例全部同类时成为叶节点。左下表格中，当前节点的样例正常显示，其余变淡。</div>
+      <h2>运行</h2>
+      <div class="row">
+        <button class="primary" id="play">▶ 开始</button>
+        <button id="step">⏭ 单步</button>
+        <button id="reset">↺ 重置</button>
+      </div>
+      <div class="row">
+        <label for="speed">每步时间</label>
+        <span class="kbd">慢</span>
+        <input type="range" id="speed" min="0" max="8" step="1" value="2">
+        <span class="kbd">快</span>
+        <span id="speedVal" class="speedval">1.5 秒</span>
+      </div>
+      <div class="kbd">快捷键：空格 开始/暂停，→ 单步，R 重置，− / + 调慢 / 调快</div>
+      <h2>当前节点</h2>
+      <div class="row"><div class="msg" id="msg">点击"单步"开始建树。</div></div>
+      <h2>各属性的信息增益</h2>
+      <table id="gainTbl"><thead><tr><th>属性</th><th>划分后的剩余熵</th><th>信息增益</th></tr></thead><tbody></tbody></table>
+      <div class="kbd" style="margin-top:6px">熵 B(q) = −q log₂q − (1−q) log₂(1−q)，q 是"会等"的比例。12 个样例中 6 个会等，根节点的熵为 1 比特。</div>
+    </div>
+
+    <div id="panelGD" class="hidden">
+      <div class="desc"><b>批量梯度下降</b>：损失 L = 平均平方误差。每一步沿负梯度方向更新 w ← w − α·∇L。学习率 α 太小走得慢，太大会在山谷两侧来回震荡甚至<b>发散</b>。</div>
+      <h2>学习率</h2>
+      <div class="row">
+        <label for="alpha">α</label>
+        <input type="range" id="alpha" min="0" max="7" step="1" value="3">
+        <span class="speedval" id="alphaVal">0.3</span>
+      </div>
+      <h2>运行</h2>
+      <div class="row">
+        <button class="primary" id="gPlay">▶ 开始</button>
+        <button id="gStep">⏭ 单步</button>
+        <button id="gReset">↺ 重置</button>
+        <button id="gData">恢复默认数据</button>
+      </div>
+      <div class="row">
+        <label for="gSpeed">每步时间</label>
+        <span class="kbd">慢</span>
+        <input type="range" id="gSpeed" min="0" max="8" step="1" value="5">
+        <span class="kbd">快</span>
+        <span id="gSpeedVal" class="speedval">0.25 秒</span>
+      </div>
+      <h2>当前状态</h2>
+      <div class="stats">
+        <div class="stat"><div class="k">迭代次数</div><div class="v" id="gIter">0</div></div>
+        <div class="stat"><div class="k">损失 L</div><div class="v" id="gLoss">–</div></div>
+        <div class="stat"><div class="k">w₀（截距）</div><div class="v" id="gW0">–</div></div>
+        <div class="stat"><div class="k">w₁（斜率）</div><div class="v" id="gW1">–</div></div>
+      </div>
+      <div class="row" style="margin-top:8px"><div class="msg" id="gMsg">点击"开始"。</div></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+// ================= 决策树：教材图 19.3 的 12 个样例 =================
+const ATTRS = ['Alt', 'Bar', 'Fri', 'Hun', 'Pat', 'Price', 'Rain', 'Res', 'Type', 'Est'];
+const ANAME = { Alt: '附近有别家', Bar: '有吧台', Fri: '周五/六', Hun: '饿了', Pat: '顾客数', Price: '价格', Rain: '下雨', Res: '有预订', Type: '类型', Est: '估计等待' };
+const VALUES = { Alt: ['Yes', 'No'], Bar: ['Yes', 'No'], Fri: ['Yes', 'No'], Hun: ['Yes', 'No'], Pat: ['None', 'Some', 'Full'], Price: ['$', '$$', '$$$'],
+  Rain: ['Yes', 'No'], Res: ['Yes', 'No'], Type: ['French', 'Italian', 'Thai', 'Burger'], Est: ['0-10', '10-30', '30-60', '>60'] };
+const RAW = [
+  'Yes No No Yes Some $$$ No Yes French 0-10 Yes', 'Yes No No Yes Full $ No No Thai 30-60 No',
+  'No Yes No No Some $ No No Burger 0-10 Yes', 'Yes No Yes Yes Full $ Yes No Thai 10-30 Yes',
+  'Yes No Yes No Full $$$ No Yes French >60 No', 'No Yes No Yes Some $$ Yes Yes Italian 0-10 Yes',
+  'No Yes No No None $ Yes No Burger 0-10 No', 'No No No Yes Some $$ Yes Yes Thai 0-10 Yes',
+  'No Yes Yes No Full $ Yes No Burger >60 No', 'Yes Yes Yes Yes Full $$$ No Yes Italian 10-30 No',
+  'No No No No None $ No No Thai 0-10 No', 'Yes Yes Yes Yes Full $ No No Burger 30-60 Yes'
+];
+const EX = RAW.map((r, i) => { const v = r.split(' '); const e = { id: i + 1, y: v[10] }; ATTRS.forEach((a, k) => e[a] = v[k]); return e; });
+const B = q => q <= 0 || q >= 1 ? 0 : -(q * Math.log2(q) + (1 - q) * Math.log2(1 - q));
+const pos = ex => ex.filter(e => e.y === 'Yes').length;
+const entropy = ex => ex.length ? B(pos(ex) / ex.length) : 0;
+function remainder(ex, a) { return VALUES[a].reduce((t, v) => { const sub = ex.filter(e => e[a] === v); return t + sub.length / ex.length * entropy(sub); }, 0); }
+
+let root = null, queue = [], cur = null, gains = [], dtDone = false, dtPlaying = false, dtTimer = null, nodeId = 0;
+function newNode(ex, attrs, parentEx, edge) { return { id: nodeId++, ex, attrs, parentEx, edge, attr: null, kids: [], leaf: null, note: '' }; }
+function plurality(ex) { const p = pos(ex); return p >= ex.length - p ? 'Yes' : 'No'; }
+function dtReset() {
+  setDTPlaying(false); nodeId = 0;
+  root = newNode(EX, ATTRS.slice(), EX, null); queue = [root]; cur = root; gains = []; dtDone = false;
+  drawTree(); drawData(); $('#gainTbl tbody').innerHTML = ''; $('#msg').innerHTML = '点击"单步"开始建树。根节点包含全部 12 个样例。';
+}
+function dtStep() {
+  if (dtDone) { setDTPlaying(false); return; }
+  const n = queue.shift(); cur = n; gains = [];
+  const p = pos(n.ex), m = n.ex.length - p, tag = n.edge ? `分支 ${n.edge.attr} = ${n.edge.val}` : '根节点';
+  if (!n.ex.length) { n.leaf = plurality(n.parentEx); n.note = '无样例'; $('#msg').innerHTML = `${tag}：<b>没有样例</b>，取父节点样例中的多数类：${n.leaf === 'Yes' ? '会等' : '不等'}。`; }
+  else if (!p || !m) { n.leaf = p ? 'Yes' : 'No'; $('#msg').innerHTML = `${tag}：${n.ex.length} 个样例<b>全部${p ? '会等' : '不等'}</b>，成为叶节点。`; }
+  else if (!n.attrs.length) { n.leaf = plurality(n.ex); n.note = '属性用完'; $('#msg').innerHTML = `${tag}：属性已经用完，取多数类。`; }
+  else {
+    const H0 = entropy(n.ex);
+    gains = n.attrs.map(a => { const r = remainder(n.ex, a); return { a, r, g: H0 - r }; }).sort((x, y) => y.g - x.g);
+    const best = gains[0];
+    n.attr = best.a;
+    for (const v of VALUES[best.a]) { const k = newNode(n.ex.filter(e => e[best.a] === v), n.attrs.filter(a => a !== best.a), n.ex, { attr: best.a, val: v }); n.kids.push(k); queue.push(k); }
+    $('#msg').innerHTML = `${tag}：${n.ex.length} 个样例（${p} 个会等，${m} 个不等），熵 = ${H0.toFixed(3)}。信息增益最大的是 <b>${best.a}（${ANAME[best.a]}）</b>，增益 ${best.g.toFixed(3)}，按它划分成 ${VALUES[best.a].length} 个分支。`;
+  }
+  if (!queue.length) { dtDone = true; $('#msg').innerHTML += ' <b>决策树建好了</b>，和教材图 19.6 一致。'; }
+  $('#gainTbl tbody').innerHTML = gains.map((x, i) => `<tr class="${i === 0 ? 'best' : ''}"><td>${x.a}（${ANAME[x.a]}）</td><td>${x.r.toFixed(3)}</td><td>${x.g.toFixed(3)}</td></tr>`).join('');
+  drawTree(); drawData();
+  if (dtDone) setDTPlaying(false);
+}
+function drawData() {
+  const ids = new Set((cur ? cur.ex : EX).map(e => e.id));
+  const splitA = cur && cur.attr;
+  let h = '<thead><tr><th>样例</th>' + ATTRS.map(a => `<th class="${a === splitA ? 'split' : ''}" title="${ANAME[a]}">${a}</th>`).join('') + '<th>会等吗</th></tr></thead><tbody>';
+  for (const e of EX) h += `<tr class="${ids.has(e.id) ? '' : 'dim'}"><td>X${e.id}</td>` + ATTRS.map(a => `<td>${e[a]}</td>`).join('') + `<td class="${e.y === 'Yes' ? 'yes' : 'no'}">${e.y === 'Yes' ? '是' : '否'}</td></tr>`;
+  $('#data').innerHTML = h + '</tbody>';
+}
+function drawTree() {
+  const svg = $('#tree'); svg.innerHTML = '';
+  let x = 0, depth = 0;
+  const lay = (n, d) => { n.d = d; depth = Math.max(depth, d); if (!n.kids.length) { n.x = x++; return; } n.kids.forEach(k => lay(k, d + 1)); n.x = (n.kids[0].x + n.kids[n.kids.length - 1].x) / 2; };
+  lay(root, 0);
+  const dx = 110, dy = 110, Wd = Math.max(x * dx, 400), Hd = depth * dy + 90;
+  svg.setAttribute('viewBox', `0 0 ${Wd} ${Hd}`);
+  const PX = n => (n.x + 0.5) * (Wd / x), PY = n => 40 + n.d * dy;
+  const el = (tag, a) => { const e = document.createElementNS(SVGNS, tag); for (const k in a) e.setAttribute(k, a[k]); svg.appendChild(e); return e; };
+  const edges = n => n.kids.forEach(k => {
+    el('line', { x1: PX(n), y1: PY(n) + 18, x2: PX(k), y2: PY(k) - 18, stroke: css('--edge'), 'stroke-width': 2 });
+    const t = el('text', { x: (PX(n) + PX(k)) / 2, y: (PY(n) + PY(k)) / 2 + 4, 'text-anchor': 'middle', 'font-size': 13, fill: css('--muted') }); t.textContent = k.edge.val;
+    edges(k);
+  });
+  edges(root);
+  const nodes = n => {
+    const p = pos(n.ex), m = n.ex.length - p, active = n === cur && !dtDone;
+    let label, fill = css('--node'), stroke = active ? css('--active') : css('--edge'), color = css('--text');
+    if (n.attr) label = `${n.attr}?`;
+    else if (n.leaf) { label = n.leaf === 'Yes' ? '会等' : '不等'; fill = n.leaf === 'Yes' ? css('--yes-bg') : css('--no-bg'); color = n.leaf === 'Yes' ? css('--yes') : css('--no'); }
+    else label = '…';
+    const w = n.attr ? 84 : 64;
+    el('rect', { x: PX(n) - w / 2, y: PY(n) - 18, width: w, height: 36, rx: n.attr ? 6 : 18, fill, stroke, 'stroke-width': active ? 4 : 2 });
+    const t = el('text', { x: PX(n), y: PY(n) + 6, 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 700, fill: color }); t.textContent = label;
+    const c = el('text', { x: PX(n), y: PY(n) + 34, 'text-anchor': 'middle', 'font-size': 12, fill: css('--muted') });
+    c.textContent = n.ex.length ? `${p} 是 / ${m} 否` : (n.note || '0 个样例');
+    n.kids.forEach(nodes);
+  };
+  nodes(root);
+}
+function setDTPlaying(p) { dtPlaying = p; clearTimeout(dtTimer); $('#play').textContent = p ? '⏸ 暂停' : '▶ 开始'; if (p) dtTick(); }
+function dtTick() { if (!dtPlaying) return; dtStep(); if (dtPlaying) dtTimer = setTimeout(dtTick, STEP_SEC[+$('#speed').value] * 1000); }
+
+// ================= 梯度下降 =================
+const DEFAULT_PTS = [[0.08, 0.30], [0.18, 0.44], [0.27, 0.38], [0.36, 0.55], [0.45, 0.52], [0.52, 0.66], [0.63, 0.61], [0.71, 0.78], [0.82, 0.74], [0.92, 0.90]];
+const ALPHAS = [0.01, 0.05, 0.1, 0.3, 0.5, 0.8, 1.0, 1.5];
+const W0R = [-1, 1.5], W1R = [-1.5, 2.5];
+let pts = DEFAULT_PTS.map(p => p.slice()), w = [-0.8, -1.2], wStart = [-0.8, -1.2], path = [], gIter = 0, gPlaying = false, gTimer = null;
+const loss = (w0, w1) => pts.reduce((t, [x, y]) => t + (y - (w0 + w1 * x)) ** 2, 0) / pts.length;
+function optimum() {
+  const n = pts.length, mx = pts.reduce((t, p) => t + p[0], 0) / n, my = pts.reduce((t, p) => t + p[1], 0) / n;
+  const sxx = pts.reduce((t, [x]) => t + (x - mx) ** 2, 0), sxy = pts.reduce((t, [x, y]) => t + (x - mx) * (y - my), 0);
+  const w1 = sxx ? sxy / sxx : 0; return [my - w1 * mx, w1];
+}
+function gReset() { setGPlaying(false); w = wStart.slice(); path = [w.slice()]; gIter = 0; drawGD(); gPanel('点击"开始"或"单步"。'); }
+function gStep() {
+  const n = pts.length, a = ALPHAS[+$('#alpha').value];
+  let g0 = 0, g1 = 0; for (const [x, y] of pts) { const e = y - (w[0] + w[1] * x); g0 += -2 * e / n; g1 += -2 * e * x / n; }
+  w = [w[0] - a * g0, w[1] - a * g1]; path.push(w.slice()); gIter++;
+  const L = loss(...w), diverged = !isFinite(L) || L > 1e4;
+  const [o0, o1] = optimum(), close = Math.hypot(w[0] - o0, w[1] - o1) < 1e-3;
+  drawGD();
+  gPanel(diverged ? `<b>发散了！</b>学习率 α = ${a} 太大，每一步都越过了谷底并且越跳越远。` :
+    close ? `<b>收敛！</b>第 ${gIter} 步已经到达最优解附近。` :
+    `第 ${gIter} 步：梯度 ∇L = (${g0.toFixed(3)}, ${g1.toFixed(3)})，沿反方向走 α = ${a} 倍，损失 L = ${L.toFixed(4)}。`);
+  if (diverged || close || gIter >= 500) setGPlaying(false);
+}
+function gPanel(msg) {
+  const L = loss(...w);
+  $('#gIter').textContent = gIter; $('#gLoss').textContent = isFinite(L) ? (L > 999 ? L.toExponential(1) : L.toFixed(4)) : '∞';
+  $('#gW0').textContent = isFinite(w[0]) ? w[0].toFixed(3) : '∞'; $('#gW1').textContent = isFinite(w[1]) ? w[1].toFixed(3) : '∞';
+  if (msg !== undefined) $('#gMsg').innerHTML = msg;
+}
+function fitCanvas(cv) {
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); return [c, r.width, r.height];
+}
+function drawGD() {
+  if ($('#paneGD').classList.contains('hidden')) return;
+  // 散点图
+  let [c, Wc, Hc] = fitCanvas($('#scatter'));
+  const pad = 30, X = x => pad + x * (Wc - 2 * pad), Y = y => Hc - pad - y * (Hc - 2 * pad);
+  c.strokeStyle = css('--grid'); c.lineWidth = 1; c.fillStyle = css('--muted'); c.font = '11px system-ui';
+  for (let v = 0; v <= 1.001; v += 0.25) { c.beginPath(); c.moveTo(X(0), Y(v)); c.lineTo(X(1), Y(v)); c.stroke(); c.beginPath(); c.moveTo(X(v), Y(0)); c.lineTo(X(v), Y(1)); c.stroke(); }
+  c.textAlign = 'center'; c.fillText('x', X(1) + 12, Y(0) + 4); c.fillText('y', X(0), Y(1) - 10);
+  const [o0, o1] = optimum();
+  c.setLineDash([6, 6]); c.strokeStyle = css('--star'); c.lineWidth = 2; c.beginPath(); c.moveTo(X(0), Y(o0)); c.lineTo(X(1), Y(o0 + o1)); c.stroke(); c.setLineDash([]);
+  if (isFinite(w[0]) && isFinite(w[1])) { c.strokeStyle = css('--line'); c.lineWidth = 3; c.beginPath(); c.moveTo(X(0), Y(w[0])); c.lineTo(X(1), Y(w[0] + w[1])); c.stroke(); }
+  c.fillStyle = css('--point'); for (const [x, y] of pts) { c.beginPath(); c.arc(X(x), Y(y), 5, 0, 7); c.fill(); }
+  // 损失曲面
+  [c, Wc, Hc] = fitCanvas($('#surface'));
+  const SX = a => pad + (a - W0R[0]) / (W0R[1] - W0R[0]) * (Wc - 2 * pad), SY = b => Hc - pad - (b - W1R[0]) / (W1R[1] - W1R[0]) * (Hc - 2 * pad);
+  const nx = 60, ny = 50, cw = (Wc - 2 * pad) / nx, chh = (Hc - 2 * pad) / ny;
+  let Lmin = loss(o0, o1), Lmax = 0; const grid = [];
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) { const L = loss(W0R[0] + (i + .5) / nx * (W0R[1] - W0R[0]), W1R[0] + (j + .5) / ny * (W1R[1] - W1R[0])); grid.push([i, j, L]); Lmax = Math.max(Lmax, L); }
+  c.fillStyle = css('--heat');
+  for (const [i, j, L] of grid) { c.globalAlpha = 0.08 + 0.75 * Math.log(1 + (L - Lmin)) / Math.log(1 + (Lmax - Lmin)); const x0 = Math.round(pad + i * cw), x1 = Math.round(pad + (i + 1) * cw), y0 = Math.round(Hc - pad - (j + 1) * chh), y1 = Math.round(Hc - pad - j * chh); c.fillRect(x0, y0, x1 - x0, y1 - y0); }
+  c.globalAlpha = 1;
+  c.fillStyle = css('--muted'); c.font = '11px system-ui'; c.textAlign = 'center';
+  c.fillText('w₀', Wc / 2, Hc - 8); c.save(); c.translate(10, Hc / 2); c.rotate(-Math.PI / 2); c.fillText('w₁', 0, 0); c.restore();
+  c.fillStyle = css('--star'); c.font = '22px system-ui'; c.textBaseline = 'middle'; c.fillText('★', SX(o0), SY(o1));
+  c.save(); c.beginPath(); c.rect(pad, pad, Wc - 2 * pad, Hc - 2 * pad); c.clip();
+  c.strokeStyle = css('--path'); c.fillStyle = css('--path'); c.lineWidth = 2; c.beginPath();
+  path.forEach(([a, b], k) => { const px = Math.max(-1e4, Math.min(1e4, SX(a))), py = Math.max(-1e4, Math.min(1e4, SY(b))); k ? c.lineTo(px, py) : c.moveTo(px, py); });
+  c.stroke();
+  for (const [a, b] of path.slice(-60)) { c.beginPath(); c.arc(SX(a), SY(b), 3, 0, 7); c.fill(); }
+  c.restore(); c.textBaseline = 'alphabetic';
+}
+function setGPlaying(p) { gPlaying = p; clearTimeout(gTimer); $('#gPlay').textContent = p ? '⏸ 暂停' : '▶ 开始'; if (p) gTick(); }
+function gTick() { if (!gPlaying) return; gStep(); if (gPlaying) gTimer = setTimeout(gTick, STEP_SEC[+$('#gSpeed').value] * 1000); }
+$('#scatter').addEventListener('click', e => {
+  const r = e.currentTarget.getBoundingClientRect(), pad = 30;
+  const x = (e.clientX - r.left - pad) / (r.width - 2 * pad), y = (r.height - pad - (e.clientY - r.top)) / (r.height - 2 * pad);
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  pts.push([x, y]); gReset();
+});
+$('#surface').addEventListener('click', e => {
+  const r = e.currentTarget.getBoundingClientRect(), pad = 30;
+  const a = W0R[0] + (e.clientX - r.left - pad) / (r.width - 2 * pad) * (W0R[1] - W0R[0]);
+  const b = W1R[0] + (r.height - pad - (e.clientY - r.top)) / (r.height - 2 * pad) * (W1R[1] - W1R[0]);
+  wStart = [a, b]; gReset();
+});
+
+// ================= 公共 =================
+const STEP_SEC = [3, 2, 1.5, 1, 0.5, 0.25, 0.1, 0.05, 0.01];
+const secLabel = s => s >= 0.1 ? `${s} 秒` : `${s * 1000} 毫秒`;
+function showTab(dt) {
+  $('#tabDT').setAttribute('aria-selected', dt); $('#tabGD').setAttribute('aria-selected', !dt);
+  for (const id of ['#paneDT', '#panelDT']) $(id).classList.toggle('hidden', !dt);
+  for (const id of ['#paneGD', '#panelGD']) $(id).classList.toggle('hidden', dt);
+  setDTPlaying(false); setGPlaying(false);
+  if (!dt) drawGD();
+}
+const isDT = () => !$('#paneDT').classList.contains('hidden');
+const onClick = (sel, fn) => $(sel).addEventListener('click', e => { fn(); e.currentTarget.blur(); });
+onClick('#tabDT', () => showTab(true));
+onClick('#tabGD', () => showTab(false));
+onClick('#play', () => { if (dtDone) dtReset(); setDTPlaying(!dtPlaying); });
+onClick('#step', () => { setDTPlaying(false); dtStep(); });
+onClick('#reset', dtReset);
+onClick('#gPlay', () => setGPlaying(!gPlaying));
+onClick('#gStep', () => { setGPlaying(false); gStep(); });
+onClick('#gReset', gReset);
+onClick('#gData', () => { pts = DEFAULT_PTS.map(p => p.slice()); wStart = [-0.8, -1.2]; gReset(); });
+$('#alpha').addEventListener('input', () => { $('#alphaVal').textContent = ALPHAS[+$('#alpha').value]; gReset(); });
+$('#speed').addEventListener('input', () => { $('#speedVal').textContent = secLabel(STEP_SEC[+$('#speed').value]); });
+$('#gSpeed').addEventListener('input', () => { $('#gSpeedVal').textContent = secLabel(STEP_SEC[+$('#gSpeed').value]); });
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  const dt = isDT(), sp = dt ? '#speed' : '#gSpeed';
+  if (e.code === 'Space') { e.preventDefault(); if (dt) { if (dtDone) dtReset(); setDTPlaying(!dtPlaying); } else setGPlaying(!gPlaying); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); if (dt) { setDTPlaying(false); dtStep(); } else { setGPlaying(false); gStep(); } }
+  else if (e.key === 'r' || e.key === 'R') dt ? dtReset() : gReset();
+  else if (e.key === '-' || e.key === '_' || e.key === '+' || e.key === '=') {
+    const el = $(sp); el.value = Math.max(0, Math.min(8, +el.value + (e.key === '-' || e.key === '_' ? -1 : 1))); el.dispatchEvent(new Event('input'));
+  }
+});
+const redraw = () => { drawTree(); drawGD(); };
+window.addEventListener('resize', drawGD);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (!/github\.io$|^localhost$|^127\.|^$/.test(location.hostname)) document.querySelectorAll('a.back').forEach(a => a.remove());
+
+dtReset();
+gReset();
+</script>
