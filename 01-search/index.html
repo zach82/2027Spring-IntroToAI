@@ -1,0 +1,666 @@
+<title>A* 搜索演示</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 布局：左侧大画布 + 右侧控制面板；投影和录屏优先，浅色为主 */
+  :root {
+    --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --on-accent: #ffffff;
+    --surface2: #f1f5f9; --control: #ffffff;
+    --ok-bg: #dcfce7; --ok-fg: #166534; --bad-bg: #fee2e2; --bad-fg: #991b1b;
+    --note-bg: #fffbeb; --note-border: #fde68a; --best-bg: #ecfdf5; --cur-bg: #eff6ff;
+    --cell: #ffffff; --grid: #e2e8f0; --wall: #334155; --open: #bbf7d0; --closed: #bfdbfe;
+    --current: #f59e0b; --path: #fde68a; --pathline: #ea580c; --start: #16a34a; --goal: #dc2626;
+    --parent: #94a3b8; --num: #334155; --num2: #475569; --marker-text: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --ok-bg: #14532d; --ok-fg: #bbf7d0; --bad-bg: #7f1d1d; --bad-fg: #fecaca;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --best-bg: #064e3b; --cur-bg: #1e3a8a;
+    --cell: #0f172a; --grid: #1e293b; --wall: #64748b; --open: #166534; --closed: #1e40af;
+    --current: #fbbf24; --path: #854d0e; --pathline: #fb923c; --start: #22c55e; --goal: #ef4444;
+    --parent: #64748b; --num: #e2e8f0; --num2: #cbd5e1; --marker-text: #ffffff;
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --ok-bg: #14532d; --ok-fg: #bbf7d0; --bad-bg: #7f1d1d; --bad-fg: #fecaca;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --best-bg: #064e3b; --cur-bg: #1e3a8a;
+    --cell: #0f172a; --grid: #1e293b; --wall: #64748b; --open: #166534; --closed: #1e40af;
+    --current: #fbbf24; --path: #854d0e; --pathline: #fb923c; --start: #22c55e; --goal: #ef4444;
+    --parent: #64748b; --num: #e2e8f0; --num2: #cbd5e1; --marker-text: #ffffff;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: flex; flex-direction: column;
+    background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+    font-size: 15px;
+  }
+  header {
+    padding-block: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px;
+    border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  main {
+    flex: 1; min-height: 0;
+    display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px;
+    padding-block: 16px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .left { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 10px; }
+  #stage { flex: 1; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; touch-action: none; cursor: crosshair; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.18); max-width: 100%; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; justify-content: center; font-size: 14px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 16px; height: 16px; border-radius: 3px; display: inline-block; border: 1px solid var(--border); }
+  .hint { text-align: center; font-size: 13px; color: var(--muted); }
+
+  aside {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; overflow-y: auto; min-height: 0; min-width: 0;
+  }
+  aside h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 8px; letter-spacing: .05em; }
+  aside h2:first-child { margin-top: 0; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .row label { min-width: 64px; color: var(--muted); }
+  select, button { font: inherit; color: var(--text); }
+  select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); flex: 1; min-width: 0; }
+  button { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); cursor: pointer; }
+  button:hover { background: var(--surface2); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); min-width: 88px; }
+  button.primary:hover { background: var(--accent-hover); }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .desc { background: var(--surface2); border-radius: 6px; padding: 10px 12px; line-height: 1.6; font-size: 14px; }
+  .desc b { color: var(--accent); }
+  .badge { font-size: 13px; padding: 4px 8px; border-radius: 4px; line-height: 1.5; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok-fg); }
+  .badge.bad { background: var(--bad-bg); color: var(--bad-fg); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .msg { min-height: 48px; background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 6px; padding: 8px 10px; line-height: 1.6; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  tr.best td { background: var(--best-bg); font-weight: 600; }
+  tr.cur td { background: var(--cur-bg); }
+  .check { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; }
+  .kbd { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .hidden { display: none !important; }
+
+  @media (max-width: 900px) {
+    html, body { height: auto; }
+    main { grid-template-columns: minmax(0, 1fr); }
+    #stage { height: 60vh; flex: none; }
+    aside { overflow: visible; }
+  }
+</style>
+<header>
+  <h1>启发式搜索演示：A* 算法</h1>
+  <span class="sub">人工智能导论 · 搜索</span>
+</header>
+<main>
+  <section class="left">
+    <div id="stage"><canvas id="cv"></canvas></div>
+    <div class="legend">
+      <span><i style="background:var(--start)"></i>起点</span>
+      <span><i style="background:var(--goal)"></i>终点</span>
+      <span><i style="background:var(--wall)"></i>障碍</span>
+      <span><i style="background:var(--open)"></i>open 表（待扩展）</span>
+      <span><i style="background:var(--closed)"></i>closed 表（已扩展）</span>
+      <span><i style="background:var(--cell);border:3px solid var(--current)"></i>当前扩展节点</span>
+      <span><i style="background:var(--path)"></i>找到的路径</span>
+    </div>
+    <div class="hint">在格子上拖动鼠标绘制 / 擦除障碍；拖动起点或终点可以移动它们</div>
+  </section>
+
+  <aside>
+    <h2>算法</h2>
+    <div class="row">
+      <select id="algo">
+        <option value="bfs">广度优先搜索 BFS</option>
+        <option value="dfs">深度优先搜索 DFS</option>
+        <option value="ucs">一致代价搜索 UCS</option>
+        <option value="greedy">贪婪最佳优先搜索</option>
+        <option value="astar" selected>A* 搜索</option>
+        <option value="wastar">加权 A* 搜索</option>
+      </select>
+    </div>
+    <div class="desc" id="desc"></div>
+
+    <h2>启发函数与移动方式</h2>
+    <div class="row">
+      <label>h(n)</label>
+      <select id="heur">
+        <option value="manhattan" selected>曼哈顿距离 |Δx|+|Δy|</option>
+        <option value="euclid">欧氏距离 √(Δx²+Δy²)</option>
+        <option value="octile">对角距离（八方向）</option>
+        <option value="zero">h(n) = 0</option>
+      </select>
+    </div>
+    <div class="row" id="wrow">
+      <label>权重 w</label>
+      <input type="range" id="w" min="1" max="5" step="0.5" value="2">
+      <span id="wval">2.0</span>
+    </div>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="diag">允许斜着走（代价 √2≈1.41）</label>
+    </div>
+    <div class="badge" id="adm"></div>
+
+    <h2>运行</h2>
+    <div class="row">
+      <button class="primary" id="play">▶ 开始</button>
+      <button id="step">⏭ 单步</button>
+      <button id="reset">↺ 重置</button>
+    </div>
+    <div class="row">
+      <label>速度</label>
+      <input type="range" id="speed" min="1" max="10" value="5">
+    </div>
+    <div class="kbd">快捷键：空格 开始/暂停，→ 单步，R 重置</div>
+
+    <h2>当前状态</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">已扩展节点</div><div class="v" id="sExp">0</div></div>
+      <div class="stat"><div class="k">open 表大小</div><div class="v" id="sOpen">0</div></div>
+      <div class="stat"><div class="k">路径步数</div><div class="v" id="sLen">–</div></div>
+      <div class="stat"><div class="k">路径代价</div><div class="v" id="sCost">–</div></div>
+    </div>
+    <div class="row" style="margin-top:8px"><div class="msg" id="msg" style="flex:1">点击"开始"或"单步"运行搜索。</div></div>
+
+    <h2>open 表（按出队顺序，前 8 个）</h2>
+    <table>
+      <thead><tr><th>节点 (行,列)</th><th>g</th><th>h</th><th id="keyHead">f</th></tr></thead>
+      <tbody id="openTbl"></tbody>
+    </table>
+
+    <h2>地图</h2>
+    <div class="row">
+      <select id="map">
+        <option value="trap" selected>U 形陷阱</option>
+        <option value="empty">空地</option>
+        <option value="maze">迷宫</option>
+        <option value="random">随机障碍</option>
+      </select>
+      <button id="gen">生成</button>
+    </div>
+    <div class="row">
+      <label>网格</label>
+      <select id="size">
+        <option value="10x16">大格子 10×16（显示数值）</option>
+        <option value="15x24" selected>中格子 15×24</option>
+        <option value="25x40">小格子 25×40</option>
+      </select>
+    </div>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="showNums" checked>显示数值（大格子显示 g/h/f）</label>
+      <label class="check"><input type="checkbox" id="showParent">显示父指针</label>
+    </div>
+
+    <h2>算法对比（当前地图）</h2>
+    <div class="row"><button id="compare">运行全部算法并对比</button></div>
+    <table id="cmpTbl" class="hidden">
+      <thead><tr><th>算法</th><th>扩展节点</th><th>路径代价</th><th>最优？</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </aside>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const SQRT2 = Math.SQRT2;
+
+const ALGO_NAMES = { bfs: 'BFS', dfs: 'DFS', ucs: 'UCS', greedy: '贪婪最佳优先', astar: 'A*', wastar: '加权 A*' };
+const DESC = {
+  bfs: '<b>广度优先搜索</b>：open 表是<b>先进先出队列</b>，一层一层向外扩展。不看代价，也不看终点在哪。每步代价都相同时，能找到步数最少的路径。',
+  dfs: '<b>深度优先搜索</b>：open 表是<b>后进先出栈</b>，沿一条路走到底再回头。扩展的节点可能很少，也可能很多，<b>不保证最优</b>。',
+  ucs: '<b>一致代价搜索</b>（Dijkstra）：总是扩展 <b>g(n)</b> 最小的节点。保证最优，但没有方向感，会向四周均匀扩展。',
+  greedy: '<b>贪婪最佳优先搜索</b>：总是扩展 <b>h(n)</b> 最小的节点，只看"离终点还有多远"。通常很快，但<b>不保证最优</b>，容易被障碍物误导。',
+  astar: '<b>A* 搜索</b>：扩展 <b>f(n) = g(n) + h(n)</b> 最小的节点。g 是从起点已经走过的代价，h 是到终点的估计代价。h 可采纳（不高估）时，A* <b>保证找到最优路径</b>。',
+  wastar: '<b>加权 A*</b>：f(n) = g(n) + <b>w·h(n)</b>。w > 1 时更相信启发信息：扩展的节点更少，但路径可能不是最优（代价不超过最优解的 w 倍）。'
+};
+
+let R = 15, C = 24;
+let walls, start, goal;
+let S = null;          // 当前搜索状态
+let playing = false, timer = null, stepNo = 0;
+let cell = 30;
+
+const idx = (r, c) => r * C + c;
+const rc = i => [Math.floor(i / C), i % C];
+const fmt = x => !isFinite(x) ? '∞' : Math.abs(x - Math.round(x)) < 1e-9 ? String(Math.round(x)) : x.toFixed(2);
+const fmtNode = i => { const [r, c] = rc(i); return `(${r},${c})`; };
+
+// ---------- 启发函数 ----------
+function heur(kind, i) {
+  const [r1, c1] = rc(i), [r2, c2] = rc(goal);
+  const dr = Math.abs(r1 - r2), dc = Math.abs(c1 - c2);
+  switch (kind) {
+    case 'manhattan': return dr + dc;
+    case 'euclid': return Math.hypot(dr, dc);
+    case 'octile': return Math.max(dr, dc) + (SQRT2 - 1) * Math.min(dr, dc);
+    default: return 0;
+  }
+}
+function admissible(kind, diag) { return !(kind === 'manhattan' && diag); }
+
+function neighbors(i, diag) {
+  const [r, c] = rc(i), out = [];
+  const free = (rr, cc) => rr >= 0 && rr < R && cc >= 0 && cc < C && !walls[idx(rr, cc)];
+  for (const [dr, dc] of [[-1, 0], [0, 1], [1, 0], [0, -1]])
+    if (free(r + dr, c + dc)) out.push([idx(r + dr, c + dc), 1]);
+  if (diag) {
+    for (const [dr, dc] of [[-1, 1], [1, 1], [1, -1], [-1, -1]])
+      // 不允许"切角"：两侧的正交格子都必须可通行
+      if (free(r + dr, c + dc) && free(r + dr, c) && free(r, c + dc)) out.push([idx(r + dr, c + dc), SQRT2]);
+  }
+  return out;
+}
+
+// ---------- 搜索（生成器，每 yield 一次 = 扩展一个节点） ----------
+function makeSearch(algo) {
+  const hk = $('#heur').value, w = +$('#w').value, diag = $('#diag').checked;
+  const N = R * C;
+  const s = {
+    algo, hk, w, diag,
+    g: new Float64Array(N).fill(Infinity),
+    parent: new Int32Array(N).fill(-1),
+    state: new Uint8Array(N),        // 0 未访问，1 open，2 closed
+    order: new Int32Array(N),        // 入队顺序，用于打破平局
+    open: [], cur: -1, path: null, pathSet: null,
+    done: false, found: false, expanded: 0, pushed: 0
+  };
+  s.h = i => heur(hk, i);
+  s.key = i => algo === 'astar' ? s.g[i] + s.h(i)
+            : algo === 'wastar' ? s.g[i] + w * s.h(i)
+            : algo === 'greedy' ? s.h(i)
+            : algo === 'ucs' ? s.g[i] : s.g[i];
+  s.gen = run(s);
+  return s;
+}
+
+// a 是否比 b 更应该先出队
+function better(s, a, b) {
+  const ka = s.key(a), kb = s.key(b);
+  if (Math.abs(ka - kb) > 1e-9) return ka < kb;
+  if (s.algo === 'astar' || s.algo === 'wastar') {
+    const ha = s.h(a), hb = s.h(b);
+    if (Math.abs(ha - hb) > 1e-9) return ha < hb;   // f 相同时优先 h 小（更靠近终点）
+  }
+  return s.order[a] < s.order[b];                   // 再相同则先进先出
+}
+
+function openSorted(s) {
+  if (s.algo === 'bfs') return s.open.slice();
+  if (s.algo === 'dfs') return s.open.slice().reverse();
+  return s.open.slice().sort((a, b) => better(s, a, b) ? -1 : better(s, b, a) ? 1 : 0);
+}
+
+function tracePath(s, t) {
+  const p = [];
+  for (let v = t; v !== -1; v = s.parent[v]) p.push(v);
+  return p.reverse();
+}
+
+function* run(s) {
+  const { algo } = s;
+  s.g[start] = 0; s.state[start] = 1; s.order[start] = s.pushed++; s.open.push(start);
+  yield { msg: `初始化：把起点 ${fmtNode(start)} 放入 open 表。` };
+
+  while (s.open.length) {
+    let i;
+    if (algo === 'bfs') i = s.open.shift();
+    else if (algo === 'dfs') i = s.open.pop();
+    else {
+      let bi = 0;
+      for (let k = 1; k < s.open.length; k++) if (better(s, s.open[k], s.open[bi])) bi = k;
+      i = s.open.splice(bi, 1)[0];
+    }
+    s.state[i] = 2; s.cur = i; s.expanded++;
+
+    if (i === goal) {
+      s.path = tracePath(s, goal); s.pathSet = new Set(s.path);
+      s.done = true; s.found = true;
+      yield { msg: `<b>到达终点！</b>共扩展 ${s.expanded} 个节点，路径 ${s.path.length - 1} 步，代价 ${fmt(s.g[goal])}。` };
+      return;
+    }
+
+    let added = 0, updated = 0;
+    for (const [n, cost] of neighbors(i, s.diag)) {
+      const ng = s.g[i] + cost;
+      if (algo === 'bfs' || algo === 'dfs') {
+        if (s.state[n] === 0) {
+          s.g[n] = ng; s.parent[n] = i; s.state[n] = 1; s.order[n] = s.pushed++; s.open.push(n); added++;
+        }
+      } else {
+        if (s.state[n] === 2) continue;
+        if (ng < s.g[n] - 1e-9) {
+          const wasOpen = s.state[n] === 1;
+          s.g[n] = ng; s.parent[n] = i;
+          if (wasOpen) updated++;
+          else { s.state[n] = 1; s.order[n] = s.pushed++; s.open.push(n); added++; }
+        }
+      }
+    }
+    yield { msg: expandMsg(s, i, added, updated) };
+  }
+  s.done = true; s.cur = -1;
+  yield { msg: '<b>open 表已空</b>：终点不可达。' };
+}
+
+function expandMsg(s, i, added, updated) {
+  const g = fmt(s.g[i]), h = fmt(s.h(i));
+  let what;
+  switch (s.algo) {
+    case 'astar': what = `f = g + h = ${g} + ${h} = ${fmt(s.key(i))}`; break;
+    case 'wastar': what = `f = g + w·h = ${g} + ${s.w}×${h} = ${fmt(s.key(i))}`; break;
+    case 'greedy': what = `h = ${h}`; break;
+    case 'ucs': what = `g = ${g}`; break;
+    case 'bfs': what = '队首节点'; break;
+    case 'dfs': what = '栈顶节点'; break;
+  }
+  let m = `第 ${s.expanded} 次扩展：节点 ${fmtNode(i)}（${what}）。`;
+  m += `新加入 open 表 ${added} 个`;
+  if (updated) m += `，<b>更新了 ${updated} 个节点的 g 值</b>（找到了更短的路）`;
+  return m + '。';
+}
+
+// ---------- 绘制 ----------
+function layout() {
+  const box = $('#stage').getBoundingClientRect();
+  cell = Math.max(8, Math.floor(Math.min(box.width / C, box.height / R)));
+  const W = cell * C, H = cell * R, dpr = window.devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+function draw() {
+  const W = cell * C, H = cell * R;
+  ctx.fillStyle = css('--cell'); ctx.fillRect(0, 0, W, H);
+
+  for (let i = 0; i < R * C; i++) {
+    const [r, c] = rc(i), x = c * cell, y = r * cell;
+    let col = null;
+    if (walls[i]) col = css('--wall');
+    else if (S && S.pathSet && S.pathSet.has(i)) col = css('--path');
+    else if (S && S.state[i] === 2) col = css('--closed');
+    else if (S && S.state[i] === 1) col = css('--open');
+    if (col) { ctx.fillStyle = col; ctx.fillRect(x, y, cell, cell); }
+  }
+
+  // 网格线
+  ctx.strokeStyle = css('--grid'); ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let r = 0; r <= R; r++) { ctx.moveTo(0, r * cell + .5); ctx.lineTo(W, r * cell + .5); }
+  for (let c = 0; c <= C; c++) { ctx.moveTo(c * cell + .5, 0); ctx.lineTo(c * cell + .5, H); }
+  ctx.stroke();
+
+  // 父指针
+  if (S && $('#showParent').checked) {
+    ctx.strokeStyle = css('--parent'); ctx.fillStyle = css('--parent'); ctx.lineWidth = Math.max(1, cell / 20);
+    for (let i = 0; i < R * C; i++) {
+      const p = S.parent[i]; if (p < 0) continue;
+      const [r, c] = rc(i), [pr, pc] = rc(p);
+      const cx = (c + .5) * cell, cy = (r + .5) * cell;
+      const dx = pc - c, dy = pr - r, len = Math.hypot(dx, dy);
+      const ex = cx + dx / len * cell * .42, ey = cy + dy / len * cell * .42;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ex, ey, Math.max(1.5, cell / 16), 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // 数值
+  // 格子够大：显示 f、g、h 三个数；格子较小：只在中间显示 f（或 g）；太小则不显示
+  if (S && $('#showNums').checked && cell >= 16) {
+    const full = cell >= 34;
+    ctx.textBaseline = 'alphabetic';
+    for (let i = 0; i < R * C; i++) {
+      if (!S.state[i] || i === start || i === goal) continue;
+      const [r, c] = rc(i), x = c * cell, y = r * cell;
+      const small = Math.round(cell * .2), big = Math.round(cell * .3);
+      ctx.fillStyle = css('--num');
+      if (!full) {
+        const v = (S.algo === 'bfs' || S.algo === 'dfs') ? S.g[i] : S.key(i);
+        const t = Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : v.toFixed(1);
+        ctx.font = `600 ${Math.round(cell * (t.length > 3 ? .32 : .42))}px system-ui`; ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(t, x + cell / 2, y + cell / 2 + 1);
+        ctx.textBaseline = 'alphabetic';
+      } else if (S.algo === 'bfs' || S.algo === 'dfs') {
+        ctx.font = `600 ${big}px system-ui`; ctx.textAlign = 'center';
+        ctx.fillText(fmt(S.g[i]), x + cell / 2, y + cell / 2 + big / 3);
+      } else {
+        ctx.font = `700 ${big}px system-ui`; ctx.textAlign = 'left';
+        ctx.fillText(fmt(S.key(i)), x + 4, y + big + 1);
+        ctx.font = `${small}px system-ui`; ctx.fillStyle = css('--num2');
+        ctx.fillText(fmt(S.g[i]), x + 4, y + cell - 4);
+        ctx.textAlign = 'right';
+        ctx.fillText(fmt(S.h(i)), x + cell - 4, y + cell - 4);
+      }
+    }
+  }
+
+  // 路径折线
+  if (S && S.path) {
+    ctx.strokeStyle = css('--pathline'); ctx.lineWidth = Math.max(2, cell / 8); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    S.path.forEach((v, k) => { const [r, c] = rc(v); const px = (c + .5) * cell, py = (r + .5) * cell; k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+    ctx.stroke();
+  }
+
+  // 当前节点
+  if (S && S.cur >= 0 && !S.found) {
+    const [r, c] = rc(S.cur);
+    ctx.strokeStyle = css('--current'); ctx.lineWidth = Math.max(2, cell / 9);
+    ctx.strokeRect(c * cell + ctx.lineWidth / 2, r * cell + ctx.lineWidth / 2, cell - ctx.lineWidth, cell - ctx.lineWidth);
+  }
+
+  // 起点 / 终点
+  for (const [i, color, label] of [[start, css('--start'), '起'], [goal, css('--goal'), '终']]) {
+    const [r, c] = rc(i), cx = (c + .5) * cell, cy = (r + .5) * cell;
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, cell * .42, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = css('--marker-text'); ctx.font = `700 ${Math.round(cell * .45)}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, cx, cy + 1);
+    ctx.textBaseline = 'alphabetic';
+  }
+}
+
+// ---------- 面板 ----------
+function updatePanel(msg) {
+  $('#sExp').textContent = S ? S.expanded : 0;
+  $('#sOpen').textContent = S ? S.open.length : 0;
+  $('#sLen').textContent = S && S.found ? S.path.length - 1 : '–';
+  $('#sCost').textContent = S && S.found ? fmt(S.g[goal]) : '–';
+  if (msg !== undefined) $('#msg').innerHTML = msg;
+
+  const algo = $('#algo').value;
+  $('#keyHead').textContent = algo === 'astar' ? 'f=g+h' : algo === 'wastar' ? 'f=g+w·h'
+    : algo === 'greedy' ? '优先级 h' : algo === 'ucs' ? '优先级 g' : '–';
+  const tb = $('#openTbl'); tb.innerHTML = '';
+  if (S) {
+    openSorted(S).slice(0, 8).forEach((v, k) => {
+      const tr = document.createElement('tr'); if (k === 0) tr.className = 'best';
+      const key = (algo === 'bfs' || algo === 'dfs') ? '–' : fmt(S.key(v));
+      tr.innerHTML = `<td>${fmtNode(v)}</td><td>${fmt(S.g[v])}</td><td>${fmt(S.h(v))}</td><td>${key}</td>`;
+      tb.appendChild(tr);
+    });
+  }
+}
+
+function updateAlgoUI() {
+  const algo = $('#algo').value;
+  $('#desc').innerHTML = DESC[algo];
+  $('#wrow').classList.toggle('hidden', algo !== 'wastar');
+  const hk = $('#heur').value, diag = $('#diag').checked, b = $('#adm');
+  if (admissible(hk, diag)) {
+    b.className = 'badge ok';
+    b.textContent = hk === 'zero' ? '✓ 可采纳。h=0 时 A* 退化为一致代价搜索。' : '✓ 可采纳：不会高估到终点的真实代价。';
+  } else {
+    b.className = 'badge bad';
+    b.textContent = '✗ 不可采纳：允许斜走时，斜走一步代价只有 1.41，曼哈顿距离却按 2 估计，会高估。A* 可能找不到最优路径。';
+  }
+}
+
+// ---------- 运行控制 ----------
+function step() {
+  if (!S) S = makeSearch($('#algo').value);
+  if (S.done) { setPlaying(false); return; }
+  const r = S.gen.next();
+  if (r.done) S.done = true;
+  draw(); updatePanel(r.value ? r.value.msg : undefined);
+  if (S.done) setPlaying(false);
+}
+const delay = () => Math.round(600 * Math.pow(0.55, +$('#speed').value - 1));
+function tick() { if (!playing) return; step(); if (playing) timer = setTimeout(tick, delay()); }
+function setPlaying(p) {
+  playing = p; clearTimeout(timer);
+  $('#play').textContent = p ? '⏸ 暂停' : '▶ 开始';
+  if (p) tick();
+}
+function resetSearch(msg = '点击"开始"或"单步"运行搜索。') {
+  setPlaying(false); S = null; draw(); updatePanel(msg);
+}
+
+// ---------- 地图 ----------
+function newGrid() {
+  [R, C] = $('#size').value.split('x').map(Number);
+  walls = new Uint8Array(R * C);
+}
+function genMap(kind) {
+  newGrid();
+  const mid = Math.floor(R / 2);
+  start = idx(mid, 2); goal = idx(mid, C - 3);
+  if (kind === 'trap') {
+    const cx = Math.floor(C * 0.62), top = Math.max(1, Math.floor(R * 0.2)), bot = R - 1 - top;
+    const L = Math.floor(C * 0.25);
+    for (let r = top; r <= bot; r++) walls[idx(r, cx)] = 1;
+    for (let c = cx - L; c <= cx; c++) { walls[idx(top, c)] = 1; walls[idx(bot, c)] = 1; }
+  } else if (kind === 'random') {
+    for (let i = 0; i < R * C; i++) walls[i] = Math.random() < 0.28 ? 1 : 0;
+  } else if (kind === 'maze') {
+    walls.fill(1);
+    const odd = (n) => n % 2 ? n : n - 1;
+    const maxR = odd(R - 2), maxC = odd(C - 2);
+    const seen = new Set(), stack = [[1, 1]];
+    walls[idx(1, 1)] = 0; seen.add(idx(1, 1));
+    while (stack.length) {
+      const [r, c] = stack[stack.length - 1];
+      const opts = [[-2, 0], [0, 2], [2, 0], [0, -2]]
+        .map(([dr, dc]) => [r + dr, c + dc, dr, dc])
+        .filter(([rr, cc]) => rr >= 1 && rr <= maxR && cc >= 1 && cc <= maxC && !seen.has(idx(rr, cc)));
+      if (!opts.length) { stack.pop(); continue; }
+      const [rr, cc, dr, dc] = opts[Math.floor(Math.random() * opts.length)];
+      walls[idx(r + dr / 2, c + dc / 2)] = 0; walls[idx(rr, cc)] = 0;
+      seen.add(idx(rr, cc)); stack.push([rr, cc]);
+    }
+    // 打通少量墙壁，制造多条路径，让不同算法的差别更明显
+    for (let r = 1; r < R - 1; r++) for (let c = 1; c < C - 1; c++) {
+      if (!walls[idx(r, c)] || Math.random() > 0.12) continue;
+      const h = !walls[idx(r, c - 1)] && !walls[idx(r, c + 1)], v = !walls[idx(r - 1, c)] && !walls[idx(r + 1, c)];
+      if (h !== v) walls[idx(r, c)] = 0;
+    }
+    start = idx(1, 1); goal = idx(maxR, maxC);
+  }
+  walls[start] = 0; walls[goal] = 0;
+  $('#cmpTbl').classList.add('hidden');
+  layout(); resetSearch();
+}
+
+// ---------- 对比 ----------
+function compareAll() {
+  const results = Object.keys(ALGO_NAMES).map(a => {
+    const s = makeSearch(a);
+    for (const _ of s.gen) { /* 跑完 */ }
+    return { a, exp: s.expanded, found: s.found, cost: s.found ? s.g[goal] : Infinity };
+  });
+  const opt = results.find(x => x.a === 'ucs').cost;
+  const tb = $('#cmpTbl tbody'); tb.innerHTML = '';
+  for (const x of results) {
+    const tr = document.createElement('tr');
+    if (x.a === $('#algo').value) tr.className = 'cur';
+    const ok = !x.found ? '—' : Math.abs(x.cost - opt) < 1e-9 ? '✓' : '✗';
+    tr.innerHTML = `<td>${ALGO_NAMES[x.a]}${x.a === 'wastar' ? ` (w=${$('#w').value})` : ''}</td><td>${x.exp}</td><td>${x.found ? fmt(x.cost) : '不可达'}</td><td>${ok}</td>`;
+    tb.appendChild(tr);
+  }
+  $('#cmpTbl').classList.remove('hidden');
+}
+
+// ---------- 鼠标编辑 ----------
+let drag = null;
+function cellAt(e) {
+  const b = cv.getBoundingClientRect();
+  const c = Math.floor((e.clientX - b.left) / cell), r = Math.floor((e.clientY - b.top) / cell);
+  return r >= 0 && r < R && c >= 0 && c < C ? idx(r, c) : -1;
+}
+cv.addEventListener('pointerdown', e => {
+  const i = cellAt(e); if (i < 0) return;
+  cv.setPointerCapture(e.pointerId);
+  if (i === start) drag = 'start';
+  else if (i === goal) drag = 'goal';
+  else { drag = walls[i] ? 'erase' : 'draw'; walls[i] = drag === 'draw' ? 1 : 0; }
+  resetSearch();
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const i = cellAt(e); if (i < 0) return;
+  if (drag === 'start' || drag === 'goal') {
+    if (walls[i] || i === start || i === goal) return;
+    if (drag === 'start') start = i; else goal = i;
+  } else {
+    if (i === start || i === goal) return;
+    walls[i] = drag === 'draw' ? 1 : 0;
+  }
+  draw();
+});
+const endDrag = () => { if (drag) { drag = null; $('#cmpTbl').classList.add('hidden'); } };
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+
+// ---------- 控件事件 ----------
+const onClick = (sel, fn) => $(sel).addEventListener('click', e => { fn(); e.currentTarget.blur(); });
+onClick('#play', () => { if (S && S.done) resetSearch(); setPlaying(!playing); });
+onClick('#step', () => { setPlaying(false); step(); });
+onClick('#reset', () => resetSearch());
+onClick('#gen', () => genMap($('#map').value));
+onClick('#compare', compareAll);
+$('#map').addEventListener('change', () => genMap($('#map').value));
+$('#size').addEventListener('change', () => genMap($('#map').value));
+for (const id of ['#algo', '#heur', '#diag']) $(id).addEventListener('change', () => {
+  updateAlgoUI(); resetSearch(); $('#cmpTbl').classList.add('hidden');
+});
+$('#w').addEventListener('input', () => { $('#wval').textContent = (+$('#w').value).toFixed(1); resetSearch(); });
+for (const id of ['#showNums', '#showParent']) $(id).addEventListener('change', draw);
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); if (S && S.done) resetSearch(); setPlaying(!playing); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); setPlaying(false); step(); }
+  else if (e.key === 'r' || e.key === 'R') resetSearch();
+});
+window.addEventListener('resize', layout);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+updateAlgoUI();
+genMap('trap');
+</script>
