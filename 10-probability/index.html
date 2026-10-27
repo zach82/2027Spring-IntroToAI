@@ -1,0 +1,356 @@
+<meta charset="utf-8">
+<title>概率与贝叶斯法则</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 布局：上方切换三个小演示；左侧主画面，右侧控制面板 */
+  :root {
+    --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --on-accent: #ffffff;
+    --surface2: #f1f5f9; --control: #ffffff;
+    --note-bg: #fffbeb; --note-border: #fde68a;
+    --tp: #dc2626; --fn: #fca5a5; --fp: #f59e0b; --tn: #cbd5e1;
+    --num-bg: #dbeafe; --den-bg: #fef3c7; --cell: #ffffff; --grid: #e2e8f0;
+    --stay: #64748b; --switch: #16a34a; --door: #92400e; --door-open: #fde68a; --goat: #64748b; --car: #16a34a; --sel: #2563eb;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e;
+    --tp: #f87171; --fn: #7f1d1d; --fp: #fbbf24; --tn: #334155;
+    --num-bg: #1e3a8a; --den-bg: #713f12; --cell: #0f172a; --grid: #273449;
+    --stay: #94a3b8; --switch: #4ade80; --door: #b45309; --door-open: #713f12; --goat: #94a3b8; --car: #4ade80; --sel: #60a5fa;
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e;
+    --tp: #f87171; --fn: #7f1d1d; --fp: #fbbf24; --tn: #334155;
+    --num-bg: #1e3a8a; --den-bg: #713f12; --cell: #0f172a; --grid: #273449;
+    --stay: #94a3b8; --switch: #4ade80; --door: #b45309; --door-open: #713f12; --goat: #94a3b8; --car: #4ade80; --sel: #60a5fa;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif; font-size: 15px; }
+  header { padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header a { color: var(--accent); font-size: 14px; text-decoration: none; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px;
+    padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .left { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 12px; overflow-y: auto; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .pane { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+  aside { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-y: auto; min-height: 0; min-width: 0; }
+  aside h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 8px; letter-spacing: .05em; }
+  aside h2:first-child { margin-top: 0; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .row label { min-width: 84px; color: var(--muted); }
+  select, button { font: inherit; color: var(--text); }
+  select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); flex: 1; min-width: 0; }
+  button { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); cursor: pointer; }
+  button:hover { background: var(--surface2); }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  button.primary:hover { background: var(--accent-hover); }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .desc { background: var(--surface2); border-radius: 6px; padding: 10px 12px; line-height: 1.6; font-size: 14px; }
+  .desc b { color: var(--accent); }
+  .msg { background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 6px; padding: 8px 10px; line-height: 1.7; font-size: 14px; }
+  .speedval { min-width: 64px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .big { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); }
+  .kbd { font-size: 12px; color: var(--muted); }
+  .hidden { display: none !important; }
+  /* 联合分布表 */
+  table.joint { border-collapse: collapse; font-size: 18px; font-variant-numeric: tabular-nums; }
+  table.joint th, table.joint td { border: 1px solid var(--border); padding: 12px 18px; text-align: center; }
+  table.joint th { color: var(--muted); font-weight: 600; font-size: 15px; background: var(--surface2); }
+  table.joint td.den { background: var(--den-bg); }
+  table.joint td.num { background: var(--num-bg); font-weight: 700; }
+  table.joint td.out { opacity: .35; }
+  .formula { font-size: 17px; line-height: 1.8; text-align: center; font-variant-numeric: tabular-nums; max-width: 760px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; font-size: 14px; color: var(--muted); }
+  .legend i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; vertical-align: -2px; margin-right: 4px; }
+  canvas { display: block; max-width: 100%; }
+  /* 门 */
+  .doors { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .door { width: 120px; height: 180px; border-radius: 8px 8px 2px 2px; border: 3px solid transparent; background: var(--door); color: #fff; font-size: 26px; font-weight: 700;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 0; }
+  .door.open { background: var(--door-open); color: var(--text); }
+  .door.sel { border-color: var(--sel); box-shadow: 0 0 0 3px var(--sel); }
+  .door .tag { font-size: 16px; font-weight: 600; }
+  .door .car { color: var(--car); } .door .goat { color: var(--goat); }
+  .doors.many .door { width: 46px; height: 70px; font-size: 13px; border-width: 2px; }
+  .doors.many .door .tag { font-size: 12px; }
+  .doors.many { gap: 6px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  @media (max-width: 900px) {
+    html, body { height: auto; }
+    main { grid-template-columns: minmax(0, 1fr); flex: none; }
+    .left, aside { min-height: auto; overflow: visible; }
+    .door { width: 90px; height: 140px; }
+  }
+</style>
+
+<header>
+  <h1>概率基础与贝叶斯法则</h1>
+  <span class="sub">人工智能导论 · 第 12 章 不确定性的量化 · 教材图 12.3</span>
+  <a class="back" href="../">← 全部演示</a>
+</header>
+<main>
+  <section class="left">
+    <div class="tabs" role="tablist">
+      <button id="tabJ" role="tab" aria-selected="true">联合分布：牙医例子</button>
+      <button id="tabB" role="tab" aria-selected="false">贝叶斯法则：医学检测</button>
+      <button id="tabM" role="tab" aria-selected="false">蒙提霍尔问题</button>
+    </div>
+
+    <div class="pane" id="paneJ">
+      <table class="joint" id="joint"></table>
+      <div class="formula" id="jFormula"></div>
+      <div class="legend"><span><i style="background:var(--den-bg)"></i>满足证据的格子（分母）</span><span><i style="background:var(--num-bg)"></i>再满足查询的格子（分子）</span></div>
+    </div>
+
+    <div class="pane hidden" id="paneB">
+      <canvas id="people" width="800" height="500"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--tp)"></i>患病，检测阳性</span>
+        <span><i style="background:var(--fn)"></i>患病，检测阴性（漏诊）</span>
+        <span><i style="background:var(--fp)"></i>健康，检测阳性（误报）</span>
+        <span><i style="background:var(--tn)"></i>健康，检测阴性</span>
+      </div>
+      <div class="formula" id="bFormula"></div>
+    </div>
+
+    <div class="pane hidden" id="paneM">
+      <div class="doors" id="doors"></div>
+      <div class="msg" id="mMsg" style="max-width:640px"></div>
+      <canvas id="mChart" width="760" height="260"></canvas>
+    </div>
+  </section>
+
+  <aside>
+    <div id="panelJ">
+      <div class="desc">教材图 12.3 中 Toothache（牙疼）、Cavity（蛀牙）、Catch（探针卡住）三个变量的<b>完全联合分布</b>。任何概率都可以从这张表算出来：先把满足证据的格子加起来作分母，再把其中满足查询的格子加起来作分子。</div>
+      <h2>查询</h2>
+      <div class="row"><label for="jQ">求概率</label><select id="jQ"><option value="cavity" selected>cavity（有蛀牙）</option><option value="toothache">toothache（牙疼）</option><option value="catch">catch（探针卡住）</option></select></div>
+      <h2>证据</h2>
+      <div class="row"><label for="eT">Toothache</label><select id="eT"><option value="">不限</option><option value="1" selected>牙疼</option><option value="0">不疼</option></select></div>
+      <div class="row"><label for="eC">Catch</label><select id="eC"><option value="" selected>不限</option><option value="1">卡住</option><option value="0">没卡住</option></select></div>
+      <div class="row"><label for="eV">Cavity</label><select id="eV"><option value="" selected>不限</option><option value="1">有蛀牙</option><option value="0">无蛀牙</option></select></div>
+      <h2>结果</h2>
+      <div class="big" id="jBig"></div>
+      <div class="kbd" style="margin-top:6px">试一试：不加证据时 P(cavity) = 0.2；知道牙疼后升到 0.6。再加上"探针卡住"会怎样？</div>
+    </div>
+
+    <div id="panelB" class="hidden">
+      <div class="desc">某种病的<b>发病率</b>很低，检测又很准。如果一个人检测呈阳性，他真正患病的概率有多大？左图是 1000 个人，按比例画出四类人。</div>
+      <h2>参数</h2>
+      <div class="row"><label for="bP">发病率 P(病)</label><input type="range" id="bP" min="0" max="12" value="4"><span class="speedval" id="bPv"></span></div>
+      <div class="row"><label for="bS">灵敏度 P(阳性|病)</label><input type="range" id="bS" min="50" max="100" value="99"><span class="speedval" id="bSv"></span></div>
+      <div class="row"><label for="bF">特异度 P(阴性|健康)</label><input type="range" id="bF" min="50" max="100" value="99"><span class="speedval" id="bFv"></span></div>
+      <h2>阳性者真正患病的概率</h2>
+      <div class="big" id="bBig"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="bAgain">再做一次检测，仍然阳性</button>
+        <button id="bReset">恢复默认</button>
+      </div>
+      <div class="kbd" id="bAgainNote">第二次检测时，第一次的结果（后验概率）就成了新的先验概率。</div>
+    </div>
+
+    <div id="panelM" class="hidden">
+      <div class="desc">三扇门后面有一辆汽车和两只山羊。你选一扇门后，知道答案的主持人会打开另一扇<b>有山羊</b>的门，然后问你：要不要换？</div>
+      <h2>自己玩</h2>
+      <div class="row"><label for="mN">门的数量</label><select id="mN"><option value="3" selected>3 扇</option><option value="10">10 扇</option><option value="100">100 扇</option></select></div>
+      <div class="row"><button class="primary" id="mNew">新的一局</button></div>
+      <div class="stats">
+        <div class="stat"><div class="k">坚持原选择：赢 / 局</div><div class="v" id="mStay">0 / 0</div></div>
+        <div class="stat"><div class="k">换门：赢 / 局</div><div class="v" id="mSwitch">0 / 0</div></div>
+      </div>
+      <h2>电脑模拟</h2>
+      <div class="row">
+        <button id="sim100">模拟 100 局</button>
+        <button id="sim1000">模拟 1000 局</button>
+        <button id="sim10000">模拟 10000 局</button>
+      </div>
+      <div class="kbd" id="mTheory"></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ================= 联合分布（教材图 12.3）=================
+// 键：toothache, catch, cavity（1 为真）
+const JOINT = { '111': .108, '110': .016, '101': .012, '100': .064, '011': .072, '010': .144, '001': .008, '000': .576 };
+const f3 = x => x.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+function renderJoint() {
+  const q = $('#jQ').value, ev = { toothache: $('#eT').value, catch: $('#eC').value, cavity: $('#eV').value };
+  const ok = (t, c, v) => (ev.toothache === '' || +ev.toothache === t) && (ev.catch === '' || +ev.catch === c) && (ev.cavity === '' || +ev.cavity === v);
+  const isQ = (t, c, v) => ({ toothache: t, catch: c, cavity: v })[q] === 1;
+  let num = 0, den = 0; const numL = [], denL = [];
+  let h = '<tr><th rowspan="2"></th><th colspan="2">toothache（牙疼）</th><th colspan="2">¬toothache（不疼）</th></tr><tr><th>catch</th><th>¬catch</th><th>catch</th><th>¬catch</th></tr>';
+  for (const v of [1, 0]) {
+    h += `<tr><th>${v ? 'cavity（有蛀牙）' : '¬cavity（无蛀牙）'}</th>`;
+    for (const t of [1, 0]) for (const c of [1, 0]) {
+      const p = JOINT[`${t}${c}${v}`], inE = ok(t, c, v), inQ = inE && isQ(t, c, v);
+      if (inE) { den += p; denL.push(f3(p)); } if (inQ) { num += p; numL.push(f3(p)); }
+      h += `<td class="${inQ ? 'num' : inE ? 'den' : 'out'}">${f3(p)}</td>`;
+    }
+    h += '</tr>';
+  }
+  $('#joint').innerHTML = h;
+  const evTxt = Object.entries(ev).filter(([, x]) => x !== '').map(([k, x]) => (x === '1' ? '' : '¬') + k).join(', ');
+  const lhs = evTxt ? `P(${q} | ${evTxt})` : `P(${q})`;
+  const r = den ? num / den : NaN;
+  $('#jFormula').innerHTML = evTxt
+    ? `${lhs} = <span style="background:var(--num-bg);padding:0 4px">(${numL.join(' + ') || '0'})</span> ÷ <span style="background:var(--den-bg);padding:0 4px">(${denL.join(' + ')})</span> = ${f3(num)} ÷ ${f3(den)} = <b>${isNaN(r) ? '—' : r.toFixed(3)}</b>`
+    : `${lhs} = ${numL.join(' + ')} = <b>${f3(num)}</b>（边缘化：把其他变量的所有取值加起来）`;
+  $('#jBig').textContent = `${lhs} = ${isNaN(r) ? '—' : r.toFixed(3)}`;
+  $('#jBig').style.fontSize = '24px';
+}
+for (const id of ['#jQ', '#eT', '#eC', '#eV']) $(id).addEventListener('change', renderJoint);
+
+// ================= 贝叶斯法则（医学检测）=================
+const PRIORS = [0.001, 0.002, 0.005, 0.01, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5];
+let prior = 0.01, tests = 0;
+const pct = x => x < 0.01 ? (x * 100).toFixed(2) + '%' : x < 0.1 ? (x * 100).toFixed(1) + '%' : (x * 100).toFixed(1) + '%';
+function bayes() {
+  const sens = +$('#bS').value / 100, spec = +$('#bF').value / 100;
+  const pPos = sens * prior + (1 - spec) * (1 - prior);
+  return { sens, spec, post: sens * prior / pPos, pPos };
+}
+function renderBayes() {
+  const { sens, spec, post, pPos } = bayes();
+  $('#bPv').textContent = pct(prior); $('#bSv').textContent = (sens * 100).toFixed(0) + '%'; $('#bFv').textContent = (spec * 100).toFixed(0) + '%';
+  $('#bBig').textContent = pct(post);
+  // 1000 人的图示
+  const n = 1000, D = Math.round(n * prior), TP = Math.round(D * sens), FN = D - TP, H = n - D, FP = Math.round(H * (1 - spec)), TN = H - FP;
+  const cv = $('#people'), box = cv.parentElement.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  const W = Math.min(800, box.width), cols = 40, rows = 25, s = W / cols, Hh = s * rows;
+  cv.width = W * dpr; cv.height = Hh * dpr; cv.style.width = W + 'px'; cv.style.height = Hh + 'px';
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, Hh);
+  const seq = [].concat(Array(TP).fill('--tp'), Array(FN).fill('--fn'), Array(FP).fill('--fp'), Array(TN).fill('--tn'));
+  seq.forEach((tok, i) => { const x = (i % cols) * s + s / 2, y = Math.floor(i / cols) * s + s / 2; c.fillStyle = css(tok); c.beginPath(); c.arc(x, y, s * 0.38, 0, 7); c.fill(); });
+  $('#bFormula').innerHTML =
+    `1000 人中约 <b>${D}</b> 人患病，其中 <b style="color:var(--tp)">${TP}</b> 人阳性；${H} 个健康人里有 <b style="color:var(--fp)">${FP}</b> 人被误报为阳性。<br>` +
+    `阳性的人共 ${TP + FP} 个，真正患病的只有 ${TP} 个：${TP} ÷ ${TP + FP} ≈ <b>${TP + FP ? pct(TP / (TP + FP)) : '—'}</b><br>` +
+    `<span style="font-size:15px;color:var(--muted)">贝叶斯法则：P(病|阳性) = P(阳性|病)P(病) ÷ [P(阳性|病)P(病) + P(阳性|健康)P(健康)] = ${sens.toFixed(2)}×${prior} ÷ (${sens.toFixed(2)}×${prior} + ${(1 - spec).toFixed(2)}×${+(1 - prior).toFixed(4)}) = ${post.toFixed(3)}</span>`;
+  $('#bAgainNote').textContent = tests ? `已经连续 ${tests} 次检测阳性。现在的先验概率 = 上一次的后验概率 = ${pct(prior)}。` : '第二次检测时，第一次的结果（后验概率）就成了新的先验概率。';
+}
+$('#bP').addEventListener('input', () => { prior = PRIORS[+$('#bP').value]; tests = 0; renderBayes(); });
+for (const id of ['#bS', '#bF']) $(id).addEventListener('input', renderBayes);
+$('#bAgain').addEventListener('click', e => { prior = Math.min(0.9999, bayes().post); tests++; renderBayes(); e.currentTarget.blur(); });
+$('#bReset').addEventListener('click', e => { $('#bP').value = 4; $('#bS').value = 99; $('#bF').value = 99; prior = 0.01; tests = 0; renderBayes(); e.currentTarget.blur(); });
+
+// ================= 蒙提霍尔 =================
+let M = null, mStats = { stay: [0, 0], switch: [0, 0] }, simHist = { stay: [], switch: [] };
+function newRound() {
+  const n = +$('#mN').value;
+  M = { n, car: Math.floor(Math.random() * n), pick: null, opened: new Set(), stage: 'pick', final: null };
+  renderDoors(); $('#mMsg').innerHTML = `请选一扇门（共 ${n} 扇，只有一扇后面是汽车）。`;
+}
+function renderDoors() {
+  const box = $('#doors'); box.innerHTML = ''; box.classList.toggle('many', M.n > 3);
+  for (let i = 0; i < M.n; i++) {
+    const b = document.createElement('button'); b.className = 'door';
+    const open = M.opened.has(i) || M.stage === 'done';
+    if (open) b.classList.add('open');
+    if (i === (M.final ?? M.pick)) b.classList.add('sel');
+    b.innerHTML = `<span>${i + 1}</span>` + (open ? `<span class="tag ${i === M.car ? 'car' : 'goat'}">${i === M.car ? '汽车' : '山羊'}</span>` : '');
+    b.setAttribute('aria-label', `第 ${i + 1} 扇门`);
+    b.addEventListener('click', () => clickDoor(i));
+    box.appendChild(b);
+  }
+}
+function clickDoor(i) {
+  if (M.stage === 'pick') {
+    M.pick = i;
+    // 主持人打开除了"你选的门"和"另一扇门"之外的所有山羊门
+    let keep = i === M.car ? (() => { let k; do k = Math.floor(Math.random() * M.n); while (k === i); return k; })() : M.car;
+    for (let d = 0; d < M.n; d++) if (d !== i && d !== keep) M.opened.add(d);
+    M.other = keep; M.stage = 'decide'; renderDoors();
+    $('#mMsg').innerHTML = `你选了 ${i + 1} 号门。主持人打开了${M.n > 3 ? '其余' : ''} ${M.opened.size} 扇有山羊的门，只剩 <b>${i + 1} 号</b>和 <b>${keep + 1} 号</b>。<br>点 ${i + 1} 号表示<b>坚持</b>，点 ${keep + 1} 号表示<b>换门</b>。`;
+  } else if (M.stage === 'decide' && (i === M.pick || i === M.other)) {
+    const sw = i !== M.pick, win = i === M.car;
+    M.final = i; M.stage = 'done';
+    const s = mStats[sw ? 'switch' : 'stay']; s[1]++; if (win) s[0]++;
+    renderDoors(); renderMStats();
+    $('#mMsg').innerHTML = `你选择了<b>${sw ? '换门' : '坚持'}</b>，${win ? '<b>赢得汽车！</b>' : '得到一只山羊。'}汽车在 ${M.car + 1} 号门。点"新的一局"再来。`;
+  }
+}
+function renderMStats() {
+  $('#mStay').textContent = `${mStats.stay[0]} / ${mStats.stay[1]}`;
+  $('#mSwitch').textContent = `${mStats.switch[0]} / ${mStats.switch[1]}`;
+  const n = +$('#mN').value;
+  $('#mTheory').innerHTML = `理论值：坚持原选择赢的概率 = 1/${n}，换门赢的概率 = ${n - 1}/${n}。一开始选中汽车的概率只有 1/${n}，主持人开门并不会改变它；剩下的 ${n - 1}/${n} 全部集中到了另一扇门上。`;
+}
+function simulate(k) {
+  const n = +$('#mN').value; let ws = 0, wsw = 0;
+  simHist = { stay: [], switch: [] };
+  for (let t = 1; t <= k; t++) {
+    const car = Math.floor(Math.random() * n), pick = Math.floor(Math.random() * n);
+    if (pick === car) ws++; else wsw++;
+    simHist.stay.push(ws / t); simHist.switch.push(wsw / t);
+  }
+  drawChart(k, n);
+  $('#mMsg').innerHTML = `模拟 ${k} 局：坚持原选择赢了 ${ws} 局（${(ws / k * 100).toFixed(1)}%），换门赢了 ${wsw} 局（${(wsw / k * 100).toFixed(1)}%）。`;
+}
+function drawChart(k, n) {
+  const cv = $('#mChart'), box = cv.parentElement.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  const W = Math.min(760, box.width), H = 260;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
+  const pl = 44, pr = 110, pt = 24, pb = 26;
+  const X = i => pl + (W - pl - pr) * (k > 1 ? i / (k - 1) : 0), Y = v => pt + (H - pt - pb) * (1 - v);
+  c.font = '12px system-ui'; c.fillStyle = css('--muted'); c.strokeStyle = css('--grid'); c.lineWidth = 1;
+  c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText('胜率随模拟局数的变化', pl, 2);
+  c.textAlign = 'right'; c.textBaseline = 'middle';
+  for (const v of [0, 0.25, 0.5, 0.75, 1]) { c.beginPath(); c.moveTo(pl, Y(v)); c.lineTo(W - pr, Y(v)); c.stroke(); c.fillText((v * 100) + '%', pl - 6, Y(v)); }
+  c.textBaseline = 'top'; c.fillText(`${k} 局`, W - pr, H - pb + 6);
+  c.setLineDash([5, 5]);
+  for (const [v, tok] of [[1 / n, '--stay'], [(n - 1) / n, '--switch']]) { c.strokeStyle = css(tok); c.beginPath(); c.moveTo(pl, Y(v)); c.lineTo(W - pr, Y(v)); c.stroke(); }
+  c.setLineDash([]);
+  for (const [arr, tok, name] of [[simHist.stay, '--stay', '坚持'], [simHist.switch, '--switch', '换门']]) {
+    c.strokeStyle = css(tok); c.lineWidth = 2.5; c.beginPath();
+    const stepI = Math.max(1, Math.floor(arr.length / 800));
+    for (let i = 0; i < arr.length; i += stepI) i ? c.lineTo(X(i), Y(arr[i])) : c.moveTo(X(i), Y(arr[i]));
+    c.lineTo(X(arr.length - 1), Y(arr[arr.length - 1])); c.stroke();
+    c.fillStyle = css(tok); c.textAlign = 'left'; c.textBaseline = 'middle'; c.font = '600 14px system-ui';
+    c.fillText(`${name} ${(arr[arr.length - 1] * 100).toFixed(1)}%`, W - pr + 8, Y(arr[arr.length - 1])); c.font = '12px system-ui';
+  }
+}
+$('#mNew').addEventListener('click', e => { newRound(); e.currentTarget.blur(); });
+$('#mN').addEventListener('change', () => { mStats = { stay: [0, 0], switch: [0, 0] }; renderMStats(); newRound(); $('#mChart').getContext('2d').clearRect(0, 0, 9999, 9999); });
+for (const k of [100, 1000, 10000]) $('#sim' + k).addEventListener('click', e => { simulate(k); e.currentTarget.blur(); });
+
+// ================= 页面切换 =================
+function showTab(t) {
+  for (const [id, p, pa] of [['J', '#paneJ', '#panelJ'], ['B', '#paneB', '#panelB'], ['M', '#paneM', '#panelM']]) {
+    $('#tab' + id).setAttribute('aria-selected', t === id);
+    $(p).classList.toggle('hidden', t !== id); $(pa).classList.toggle('hidden', t !== id);
+  }
+  if (t === 'B') renderBayes();
+}
+for (const t of ['J', 'B', 'M']) $('#tab' + t).addEventListener('click', e => { showTab(t); e.currentTarget.blur(); });
+const redraw = () => { if (!$('#paneB').classList.contains('hidden')) renderBayes(); if (simHist.stay.length) drawChart(simHist.stay.length, +$('#mN').value); };
+window.addEventListener('resize', redraw);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (!/github\.io$|^localhost$|^127\.|^$/.test(location.hostname)) document.querySelectorAll('a.back').forEach(a => a.remove());
+
+renderJoint();
+renderMStats(); newRound();
+</script>
