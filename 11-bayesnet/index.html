@@ -1,0 +1,342 @@
+<meta charset="utf-8">
+<title>防盗报警贝叶斯网络</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 布局：左侧网络图 + 采样收敛曲线；右侧查询、精确推理与采样控制 */
+  :root {
+    --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --on-accent: #ffffff;
+    --surface2: #f1f5f9; --control: #ffffff;
+    --note-bg: #fffbeb; --note-border: #fde68a;
+    --node: #ffffff; --edge: #94a3b8; --bar: #2563eb; --bar-bg: #e2e8f0; --ev-true: #16a34a; --ev-false: #dc2626;
+    --query: #f59e0b; --grid: #e2e8f0; --exact: #16a34a; --est: #2563eb; --halo: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e;
+    --node: #0f172a; --edge: #64748b; --bar: #60a5fa; --bar-bg: #334155; --ev-true: #4ade80; --ev-false: #f87171;
+    --query: #fbbf24; --grid: #273449; --exact: #4ade80; --est: #60a5fa; --halo: #0b1220;
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e;
+    --node: #0f172a; --edge: #64748b; --bar: #60a5fa; --bar-bg: #334155; --ev-true: #4ade80; --ev-false: #f87171;
+    --query: #fbbf24; --grid: #273449; --exact: #4ade80; --est: #60a5fa; --halo: #0b1220;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif; font-size: 15px; }
+  header { padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header a { color: var(--accent); font-size: 14px; text-decoration: none; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px;
+    padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .left { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 10px; }
+  .stage { flex: 1; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+  #net { width: 100%; height: 100%; }
+  #net text { paint-order: stroke; stroke: var(--halo); stroke-width: 3px; }
+  #net .node { cursor: pointer; }
+  #chartBox { height: 180px; flex: none; }
+  canvas { display: block; }
+  .hint { text-align: center; font-size: 13px; color: var(--muted); }
+  aside { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-y: auto; min-height: 0; min-width: 0; }
+  aside h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 8px; letter-spacing: .05em; }
+  aside h2:first-child { margin-top: 0; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .row label { min-width: 64px; color: var(--muted); }
+  select, button { font: inherit; color: var(--text); }
+  select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); flex: 1; min-width: 0; }
+  button { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); cursor: pointer; }
+  button:hover { background: var(--surface2); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); min-width: 88px; }
+  button.primary:hover { background: var(--accent-hover); }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .check { display: inline-flex; align-items: center; gap: 4px; }
+  .desc { background: var(--surface2); border-radius: 6px; padding: 10px 12px; line-height: 1.6; font-size: 14px; }
+  .desc b { color: var(--accent); }
+  .calc { background: var(--surface2); border-radius: 6px; padding: 10px 12px; font-size: 14px; line-height: 1.8; font-variant-numeric: tabular-nums; overflow-x: auto; }
+  .big { font-size: 26px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .msg { min-height: 40px; background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 6px; padding: 8px 10px; line-height: 1.6; font-size: 14px; flex: 1; }
+  .kbd { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .row .kbd { margin-top: 0; }
+  .speedval { min-width: 64px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  @media (max-width: 900px) {
+    html, body { height: auto; }
+    main { grid-template-columns: minmax(0, 1fr); flex: none; }
+    .left, aside { min-height: auto; }
+    .stage { height: 60vh; flex: none; }
+    aside { overflow: visible; }
+  }
+</style>
+
+<header>
+  <h1>贝叶斯网络：防盗报警器</h1>
+  <span class="sub">人工智能导论 · 第 13 章 概率推理 · 教材图 13.2</span>
+  <a class="back" href="../">← 全部演示</a>
+</header>
+<main>
+  <section class="left">
+    <div class="stage"><svg id="net" role="img" aria-label="防盗报警贝叶斯网络"></svg></div>
+    <div class="hint">点击节点设置证据：不限 → 真 → 假 → 不限。橙色边框是查询变量；条形是在当前证据下为"真"的概率（精确推理）。</div>
+    <div id="chartBox"><canvas id="chart"></canvas></div>
+  </section>
+
+  <aside>
+    <div class="desc">家里装了防盗报警器，盗窃（Burglary）和小地震（Earthquake）都可能触发它。邻居 John 和 Mary 听到警报会打电话，但 John 有时会把电话铃声当成警报，Mary 有时戴耳机听不见。<b>两人都打来电话时，家里真的被盗的概率有多大？</b></div>
+
+    <h2>查询</h2>
+    <div class="row">
+      <label for="q">查询变量</label>
+      <select id="q"><option value="B" selected>Burglary 盗窃</option><option value="E">Earthquake 地震</option><option value="A">Alarm 警报</option><option value="J">JohnCalls</option><option value="M">MaryCalls</option></select>
+    </div>
+    <div class="row"><label class="check"><input type="checkbox" id="cpt" checked>在图上显示条件概率表</label></div>
+    <div class="row"><button id="bookEv">教材例子：John 和 Mary 都打电话</button></div>
+
+    <h2>精确推理（枚举法）</h2>
+    <div class="big" id="exact"></div>
+    <div class="calc" id="calc"></div>
+
+    <h2>近似推理（采样）</h2>
+    <div class="row">
+      <label for="method">方法</label>
+      <select id="method"><option value="rej">拒绝采样</option><option value="lw" selected>似然加权</option></select>
+    </div>
+    <div class="row">
+      <button class="primary" id="play">▶ 连续采样</button>
+      <button id="one">⏭ 抽一个样本</button>
+      <button id="reset">↺ 清空</button>
+    </div>
+    <div class="row">
+      <label for="speed">采样速度</label>
+      <input type="range" id="speed" min="0" max="5" value="3">
+      <span class="speedval" id="speedVal"></span>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">已抽样本</div><div class="v" id="sN">0</div></div>
+      <div class="stat"><div class="k" id="sUk">被接受的样本</div><div class="v" id="sU">0</div></div>
+      <div class="stat"><div class="k">采样估计值</div><div class="v" id="sEst">–</div></div>
+      <div class="stat"><div class="k">与精确值的误差</div><div class="v" id="sErr">–</div></div>
+    </div>
+    <div class="row" style="margin-top:8px"><div class="msg" id="msg">点击"抽一个样本"看看每个样本是怎么生成的。</div></div>
+    <div class="kbd">快捷键：空格 连续采样/暂停，→ 抽一个样本，R 清空</div>
+  </aside>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+// 教材图 13.2 的网络结构与条件概率表
+const VARS = ['B', 'E', 'A', 'J', 'M'];
+const NAME = { B: 'Burglary', E: 'Earthquake', A: 'Alarm', J: 'JohnCalls', M: 'MaryCalls' };
+const CN = { B: '盗窃', E: '地震', A: '警报', J: 'John 打电话', M: 'Mary 打电话' };
+const PAR = { B: [], E: [], A: ['B', 'E'], J: ['A'], M: ['A'] };
+const CPT = { B: { '': .001 }, E: { '': .002 }, A: { TT: .95, TF: .94, FT: .29, FF: .001 }, J: { T: .90, F: .05 }, M: { T: .70, F: .01 } };
+const POS = { B: [300, 90], E: [700, 90], A: [500, 260], J: [300, 430], M: [700, 430] };
+const pTrue = (v, a) => CPT[v][PAR[v].map(p => a[p] ? 'T' : 'F').join('')];
+const pOf = (v, val, a) => val ? pTrue(v, a) : 1 - pTrue(v, a);
+const joint = a => VARS.reduce((t, v) => t * pOf(v, a[v], a), 1);
+
+let ev = { J: true, M: true }, query = 'B';
+let samp = null, playing = false, timer = null, lastSample = null;
+
+function exactAll() {
+  const out = {}; let Z = 0; const num = {}; for (const v of VARS) num[v] = 0;
+  for (let m = 0; m < 32; m++) {
+    const a = {}; VARS.forEach((v, i) => a[v] = !!(m >> i & 1));
+    if (Object.entries(ev).some(([k, x]) => a[k] !== x)) continue;
+    const p = joint(a); Z += p; for (const v of VARS) if (a[v]) num[v] += p;
+  }
+  for (const v of VARS) out[v] = num[v] / Z;
+  return { post: out, Z };
+}
+const evText = () => Object.entries(ev).map(([k, x]) => (x ? '' : '¬') + k.toLowerCase()).join(', ');
+
+function renderCalc() {
+  const { post } = exactAll();
+  const qv = query, et = evText(), lhs = et ? `P(${qv} | ${et})` : `P(${qv})`;
+  if (qv in ev) { $('#exact').textContent = `${lhs} = ${ev[qv] ? 1 : 0}`; $('#calc').innerHTML = '查询变量本身就是证据，概率是确定的。'; return post; }
+  $('#exact').textContent = `${lhs} = ${post[qv].toFixed(3)}`;
+  // 枚举法：对隐藏变量求和，再归一化
+  const hidden = VARS.filter(v => v !== qv && !(v in ev));
+  const un = [true, false].map(val => {
+    let s = 0;
+    for (let m = 0; m < 1 << hidden.length; m++) {
+      const a = { ...ev, [qv]: val }; hidden.forEach((h, i) => a[h] = !!(m >> i & 1));
+      s += joint(a);
+    }
+    return s;
+  });
+  const sci = x => x === 0 ? '0' : x < 0.001 ? x.toExponential(4) : x.toFixed(6).replace(/0+$/, '');
+  $('#calc').innerHTML =
+    `对隐藏变量 ${hidden.length ? hidden.join('、') : '（无）'} 求和：<br>` +
+    `P(${qv.toLowerCase()}${et ? ', ' + et : ''}) = ${sci(un[0])}<br>` +
+    `P(¬${qv.toLowerCase()}${et ? ', ' + et : ''}) = ${sci(un[1])}<br>` +
+    `归一化：${sci(un[0])} ÷ (${sci(un[0])} + ${sci(un[1])}) = <b>${(un[0] / (un[0] + un[1])).toFixed(3)}</b>`;
+  return post;
+}
+
+// ---------- 采样 ----------
+function resetSamp() {
+  setPlaying(false);
+  samp = { n: 0, used: 0, wq: 0, wAll: 0, hist: [] }; lastSample = null;
+  $('#sUk').textContent = $('#method').value === 'rej' ? '被接受的样本' : '样本权重之和';
+  updSampPanel(); drawChart(); draw();
+}
+function drawSample() {
+  const method = $('#method').value, a = {}; let w = 1, rejected = false;
+  for (const v of VARS) {
+    if (method === 'lw' && v in ev) { a[v] = ev[v]; w *= pOf(v, ev[v], a); }
+    else a[v] = Math.random() < pTrue(v, a);
+  }
+  if (method === 'rej') rejected = Object.entries(ev).some(([k, x]) => a[k] !== x);
+  samp.n++;
+  if (method === 'rej') { if (!rejected) { samp.used++; samp.wAll++; if (a[query]) samp.wq++; } }
+  else { samp.used += w; samp.wAll += w; if (a[query]) samp.wq += w; }
+  samp.hist.push(samp.wAll ? samp.wq / samp.wAll : NaN);
+  lastSample = { a, w, rejected, method };
+}
+function sampleMsg() {
+  const s = lastSample; if (!s) return;
+  const vals = VARS.map(v => `${v}=${s.a[v] ? '真' : '假'}`).join('，');
+  if (s.method === 'rej') $('#msg').innerHTML = `按网络顺序抽样：${vals}。` + (s.rejected ? '与证据不符，<b>拒绝</b>这个样本。' : '与证据一致，<b>接受</b>。');
+  else $('#msg').innerHTML = `证据变量固定为观察值，其余按网络顺序抽样：${vals}。样本权重 = 证据在其父节点下的概率之积 = <b>${s.w.toExponential(2)}</b>。`;
+}
+function updSampPanel() {
+  const exact = exactAll().post[query];
+  $('#sN').textContent = samp.n.toLocaleString();
+  $('#sU').textContent = $('#method').value === 'rej' ? samp.used.toLocaleString() : samp.used.toExponential(2);
+  const est = samp.wAll ? samp.wq / samp.wAll : NaN;
+  $('#sEst').textContent = isNaN(est) ? '–' : est.toFixed(3);
+  $('#sErr').textContent = isNaN(est) ? '–' : Math.abs(est - exact).toFixed(3);
+}
+const BATCH = [1, 5, 20, 100, 500, 2000];
+function tick() {
+  if (!playing) return;
+  const k = BATCH[+$('#speed').value];
+  for (let i = 0; i < k; i++) drawSample();
+  sampleMsg(); updSampPanel(); drawChart(); draw();
+  if (samp.n >= 200000) { setPlaying(false); return; }
+  timer = setTimeout(tick, 60);
+}
+function setPlaying(p) { playing = p; clearTimeout(timer); $('#play').textContent = p ? '⏸ 暂停' : '▶ 连续采样'; if (p) tick(); }
+
+// ---------- 绘制 ----------
+function draw() {
+  const svg = $('#net'); svg.innerHTML = '';
+  svg.setAttribute('viewBox', '0 0 1000 540');
+  const el = (tag, a, p = svg) => { const e = document.createElementNS(SVGNS, tag); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+  const txt = (x, y, s, a = {}, p = svg) => { const t = el('text', { x, y, 'text-anchor': 'middle', ...a }, p); t.textContent = s; return t; };
+  const post = exactAll().post, W = 190, H = 84;
+  // 边
+  const defs = el('defs', {}); const mk = el('marker', { id: 'arr', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 8, markerHeight: 8, orient: 'auto' }, defs);
+  el('path', { d: 'M0,0 L10,5 L0,10 z', fill: css('--edge') }, mk);
+  for (const v of VARS) for (const p of PAR[v]) {
+    const [x1, y1] = POS[p], [x2, y2] = POS[v];
+    const dy = y2 > y1 ? H / 2 : -H / 2;
+    el('line', { x1, y1: y1 + dy, x2: x1 + (x2 - x1) * 0.92, y2: y2 - dy * 1.05, stroke: css('--edge'), 'stroke-width': 2.5, 'marker-end': 'url(#arr)' });
+  }
+  for (const v of VARS) {
+    const [cx, cy] = POS[v], g = el('g', { class: 'node' });
+    const isEv = v in ev, color = isEv ? (ev[v] ? css('--ev-true') : css('--ev-false')) : v === query ? css('--query') : css('--edge');
+    el('rect', { x: cx - W / 2, y: cy - H / 2, width: W, height: H, rx: 10, fill: css('--node'), stroke: color, 'stroke-width': isEv || v === query ? 4 : 2 }, g);
+    txt(cx, cy - 16, `${NAME[v]}（${CN[v]}）`, { 'font-size': 15, 'font-weight': 700, fill: css('--text') }, g);
+    if (isEv) txt(cx, cy + 20, `证据：${ev[v] ? '真' : '假'}`, { 'font-size': 18, 'font-weight': 700, fill: color }, g);
+    else {
+      const p = post[v], bw = W - 40;
+      el('rect', { x: cx - bw / 2, y: cy + 2, width: bw, height: 14, rx: 3, fill: css('--bar-bg') }, g);
+      el('rect', { x: cx - bw / 2, y: cy + 2, width: Math.max(2, bw * p), height: 14, rx: 3, fill: css('--bar') }, g);
+      txt(cx, cy + 34, `P(真) = ${p < 0.001 ? p.toExponential(2) : p.toFixed(3)}`, { 'font-size': 14, fill: css('--text') }, g);
+    }
+    if (lastSample) {
+      const s = lastSample.a[v];
+      txt(cx + W / 2 - 6, cy - H / 2 - 6, `样本：${s ? '真' : '假'}`, { 'font-size': 12, 'text-anchor': 'end', fill: css('--muted') }, g);
+    }
+    g.addEventListener('click', () => {
+      if (!(v in ev)) ev[v] = true; else if (ev[v]) ev[v] = false; else delete ev[v];
+      update();
+    });
+    if ($('#cpt').checked) drawCPT(v, el, txt);
+  }
+}
+function drawCPT(v, el, txt) {
+  const [cx, cy] = POS[v];
+  const rows = PAR[v].length === 0 ? [[`P(${v.toLowerCase()})`, CPT[v]['']]]
+    : PAR[v].length === 1 ? [[`${PAR[v][0]}=真`, CPT[v].T], [`${PAR[v][0]}=假`, CPT[v].F]]
+    : [['B=真 E=真', CPT[v].TT], ['B=真 E=假', CPT[v].TF], ['B=假 E=真', CPT[v].FT], ['B=假 E=假', CPT[v].FF]];
+  const left = v === 'B' || v === 'J', x = left ? cx - 95 - 160 : cx + 95 + 16, y0 = v === 'A' ? cy - 44 : cy - rows.length * 9;
+  rows.forEach(([k, p], i) => {
+    txt(x, y0 + i * 20, k, { 'text-anchor': 'start', 'font-size': 12, fill: css('--muted') });
+    txt(x + 136, y0 + i * 20, p.toString(), { 'text-anchor': 'end', 'font-size': 12, 'font-weight': 600, fill: css('--text') });
+  });
+  if (v !== 'A' && PAR[v].length) txt(x, y0 - 18, `P(${v.toLowerCase()} | ${PAR[v][0]})`, { 'text-anchor': 'start', 'font-size': 12, fill: css('--muted') });
+  if (v === 'A') txt(x, y0 - 18, 'P(a | B, E)', { 'text-anchor': 'start', 'font-size': 12, fill: css('--muted') });
+}
+function drawChart() {
+  const cv = $('#chart'), box = $('#chartBox').getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = box.width * dpr; cv.height = box.height * dpr; cv.style.width = box.width + 'px'; cv.style.height = box.height + 'px';
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const Wc = box.width, Hc = box.height, pl = 44, pr = 120, pt = 22, pb = 22;
+  const exact = query in ev ? (ev[query] ? 1 : 0) : exactAll().post[query];
+  const h = samp ? samp.hist : [], n = Math.max(10, h.length);
+  const X = i => pl + (Wc - pl - pr) * Math.log10(1 + i) / Math.log10(1 + n), Y = v => pt + (Hc - pt - pb) * (1 - v);
+  c.font = '12px system-ui'; c.fillStyle = css('--muted'); c.strokeStyle = css('--grid'); c.lineWidth = 1;
+  c.textAlign = 'left'; c.textBaseline = 'top'; c.fillText(`采样估计值随样本数的变化（横轴为对数刻度）`, pl, 2);
+  c.textAlign = 'right'; c.textBaseline = 'middle';
+  for (const v of [0, 0.5, 1]) { c.beginPath(); c.moveTo(pl, Y(v)); c.lineTo(Wc - pr, Y(v)); c.stroke(); c.fillText(v.toFixed(1), pl - 6, Y(v)); }
+  c.textBaseline = 'top'; c.fillText(`${n.toLocaleString()} 个样本`, Wc - pr, Hc - pb + 4);
+  c.setLineDash([6, 5]); c.strokeStyle = css('--exact'); c.lineWidth = 2; c.beginPath(); c.moveTo(pl, Y(exact)); c.lineTo(Wc - pr, Y(exact)); c.stroke(); c.setLineDash([]);
+  c.fillStyle = css('--exact'); c.textAlign = 'left'; c.textBaseline = 'middle'; c.font = '600 13px system-ui';
+  c.fillText(`精确值 ${exact.toFixed(3)}`, Wc - pr + 8, Y(exact));
+  if (h.length) {
+    c.strokeStyle = css('--est'); c.lineWidth = 2; c.beginPath(); let started = false;
+    const stepI = Math.max(1, Math.floor(h.length / 1500));
+    for (let i = 0; i < h.length; i += stepI) { if (isNaN(h[i])) continue; started ? c.lineTo(X(i + 1), Y(h[i])) : c.moveTo(X(i + 1), Y(h[i])); started = true; }
+    c.stroke();
+    const last = h[h.length - 1];
+    if (!isNaN(last)) { c.fillStyle = css('--est'); c.fillText(`估计 ${last.toFixed(3)}`, Wc - pr + 8, Y(last) + (Math.abs(last - exact) < 0.06 ? 16 : 0)); }
+  }
+}
+function update() { renderCalc(); resetSamp(); }
+
+// ---------- 事件 ----------
+const onClick = (sel, fn) => $(sel).addEventListener('click', e => { fn(); e.currentTarget.blur(); });
+onClick('#play', () => setPlaying(!playing));
+onClick('#one', () => { setPlaying(false); drawSample(); sampleMsg(); updSampPanel(); drawChart(); draw(); });
+onClick('#reset', () => { resetSamp(); $('#msg').innerHTML = '点击"抽一个样本"看看每个样本是怎么生成的。'; });
+onClick('#bookEv', () => { ev = { J: true, M: true }; query = 'B'; $('#q').value = 'B'; update(); });
+$('#q').addEventListener('change', () => { query = $('#q').value; update(); });
+$('#method').addEventListener('change', () => { resetSamp(); $('#msg').innerHTML = $('#method').value === 'rej' ? '拒绝采样：按网络顺序随机生成完整样本，<b>丢掉与证据不符的</b>。证据越少见，被丢掉的样本就越多。' : '似然加权：证据变量<b>直接取观察值</b>，不再丢样本，而是给每个样本一个权重，权重是证据出现的可能性。'; });
+$('#cpt').addEventListener('change', draw);
+const updSpeed = () => { $('#speedVal').textContent = `${BATCH[+$('#speed').value]} 个/次`; };
+$('#speed').addEventListener('input', updSpeed);
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); setPlaying(false); drawSample(); sampleMsg(); updSampPanel(); drawChart(); draw(); }
+  else if (e.key === 'r' || e.key === 'R') resetSamp();
+});
+const redraw = () => { draw(); drawChart(); };
+window.addEventListener('resize', drawChart);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (!/github\.io$|^localhost$|^127\.|^$/.test(location.hostname)) document.querySelectorAll('a.back').forEach(a => a.remove());
+
+updSpeed();
+update();
+</script>
