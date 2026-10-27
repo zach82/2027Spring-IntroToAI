@@ -1,0 +1,458 @@
+<meta charset="utf-8">
+<title>八数码 A* 演示</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 布局：左侧大棋盘（当前扩展的状态）+ 子节点一排；右侧控制面板 */
+  :root {
+    --bg: #f8fafc; --panel: #ffffff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --on-accent: #ffffff;
+    --surface2: #f1f5f9; --control: #ffffff;
+    --note-bg: #fffbeb; --note-border: #fde68a; --best-bg: #ecfdf5; --cur-bg: #eff6ff;
+    --tile: #dbeafe; --tile-text: #1e3a8a; --tile-ok: #bbf7d0; --tile-ok-text: #14532d;
+    --board: #cbd5e1; --blank: #f1f5f9; --child-new: #16a34a; --child-dup: #94a3b8; --child-best: #f59e0b;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --best-bg: #064e3b; --cur-bg: #1e3a8a;
+    --tile: #1e3a8a; --tile-text: #dbeafe; --tile-ok: #166534; --tile-ok-text: #dcfce7;
+    --board: #334155; --blank: #0f172a; --child-new: #22c55e; --child-dup: #64748b; --child-best: #fbbf24;
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #0b1220; --panel: #111827; --text: #e5e7eb; --muted: #94a3b8; --border: #273449;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #ffffff;
+    --surface2: #1e293b; --control: #0f172a;
+    --note-bg: #3b2a0a; --note-border: #854d0e; --best-bg: #064e3b; --cur-bg: #1e3a8a;
+    --tile: #1e3a8a; --tile-text: #dbeafe; --tile-ok: #166534; --tile-ok-text: #dcfce7;
+    --board: #334155; --blank: #0f172a; --child-new: #22c55e; --child-dup: #64748b; --child-best: #fbbf24;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif; font-size: 15px; }
+  header { padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header a { color: var(--accent); font-size: 14px; text-decoration: none; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px;
+    padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .left { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; min-width: 0; gap: 18px; overflow-y: auto; }
+  aside { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-y: auto; min-height: 0; min-width: 0; }
+  aside h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 8px; letter-spacing: .05em; }
+  aside h2:first-child { margin-top: 0; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .row label { min-width: 64px; color: var(--muted); }
+  select, button { font: inherit; color: var(--text); }
+  select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); flex: 1; min-width: 0; }
+  button { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--control); cursor: pointer; }
+  button:hover { background: var(--surface2); }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); min-width: 88px; }
+  button.primary:hover { background: var(--accent-hover); }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .desc { background: var(--surface2); border-radius: 6px; padding: 10px 12px; line-height: 1.6; font-size: 14px; }
+  .desc b { color: var(--accent); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .msg { min-height: 48px; background: var(--note-bg); border: 1px solid var(--note-border); border-radius: 6px; padding: 8px 10px; line-height: 1.6; font-size: 14px; flex: 1; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  tr.cur td { background: var(--cur-bg); }
+  .kbd { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .row .kbd { margin-top: 0; }
+  .speedval { min-width: 56px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .hidden { display: none !important; }
+
+  /* 棋盘 */
+  .boardwrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 24px; }
+  .board { position: relative; width: min(46vh, 340px); aspect-ratio: 1; max-width: 100%; background: var(--board); border-radius: 10px; padding: 6px; }
+  .board.small { width: 104px; padding: 3px; border-radius: 6px; }
+  .tile { position: absolute; width: calc((100% - 12px) / 3 - 6px); height: calc((100% - 12px) / 3 - 6px);
+    display: flex; align-items: center; justify-content: center; border-radius: 8px;
+    background: var(--tile); color: var(--tile-text); font-weight: 700; font-size: clamp(20px, 6vh, 52px);
+    transition: left .25s ease, top .25s ease; user-select: none; }
+  .tile.ok { background: var(--tile-ok); color: var(--tile-ok-text); }
+  .board.small .tile { width: calc((100% - 6px) / 3 - 3px); height: calc((100% - 6px) / 3 - 3px); font-size: 20px; border-radius: 4px; transition: none; }
+  .board.editable .tile { cursor: pointer; }
+  @media (prefers-reduced-motion: reduce) { .tile { transition: none; } }
+  .nodeinfo { display: grid; gap: 6px; font-size: 15px; min-width: 150px; }
+  .nodeinfo .big { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .nodeinfo .k { color: var(--muted); font-size: 13px; }
+  .children { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; min-height: 150px; }
+  .child { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .child .board { outline: 3px solid transparent; }
+  .child.new .board { outline-color: var(--child-new); }
+  .child.dup { opacity: .55; }
+  .child.dup .board { outline-color: var(--child-dup); }
+  .child .tag { color: var(--muted); }
+  .caption { font-size: 13px; color: var(--muted); text-align: center; }
+  .goalmini { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  @media (max-width: 900px) {
+    html, body { height: auto; }
+    main { grid-template-columns: minmax(0, 1fr); flex: none; }
+    .left, aside { min-height: auto; }
+    aside { overflow: visible; }
+  }
+</style>
+
+<header>
+  <h1>八数码问题：启发函数与 A* 搜索</h1>
+  <span class="sub">人工智能导论 · 第 3 章 搜索 · 教材图 3.3</span>
+  <a class="back" href="../">← 全部演示</a>
+</header>
+<main>
+  <section class="left">
+    <div class="caption" id="boardCaption">初始状态（可以点击与空格相邻的方块来移动它）</div>
+    <div class="boardwrap">
+      <div class="board editable" id="board"></div>
+      <div class="nodeinfo" id="nodeinfo"></div>
+      <div class="goalmini"><div class="board small" id="goalBoard"></div><span class="caption">目标状态</span></div>
+    </div>
+    <div class="caption" id="childCaption">扩展当前节点后生成的子节点（绿框：新加入边界；灰色：已经见过）</div>
+    <div class="children" id="children"></div>
+  </section>
+
+  <aside>
+    <h2>初始状态</h2>
+    <div class="row">
+      <button id="bookEx">教材例子（图 3.3）</button>
+      <button id="shuffle">随机打乱</button>
+    </div>
+    <div class="row">
+      <label for="depth">打乱步数</label>
+      <input type="range" id="depth" min="4" max="40" value="14">
+      <span id="depthVal" class="speedval">14</span>
+    </div>
+
+    <h2>算法与启发函数</h2>
+    <div class="row">
+      <select id="algo">
+        <option value="bfs">广度优先搜索 BFS</option>
+        <option value="h1">A*，h₁ = 错位方块数</option>
+        <option value="h2" selected>A*，h₂ = 曼哈顿距离之和</option>
+        <option value="greedy">贪婪最佳优先，h₂</option>
+      </select>
+    </div>
+    <div class="desc" id="desc"></div>
+
+    <h2>运行</h2>
+    <div class="row">
+      <button class="primary" id="play">▶ 开始</button>
+      <button id="step">⏭ 单步</button>
+      <button id="reset">↺ 重置</button>
+      <button id="solve">⚡ 立即求解</button>
+    </div>
+    <div class="row">
+      <label for="speed">每步时间</label>
+      <span class="kbd">慢</span>
+      <input type="range" id="speed" min="0" max="8" step="1" value="4">
+      <span class="kbd">快</span>
+      <span id="speedVal" class="speedval">0.5 秒</span>
+    </div>
+    <div class="kbd">快捷键：空格 开始/暂停，→ 单步，R 重置，− / + 调慢 / 调快</div>
+
+    <h2>当前状态</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">已扩展节点</div><div class="v" id="sExp">0</div></div>
+      <div class="stat"><div class="k">已生成节点 N</div><div class="v" id="sGen">0</div></div>
+      <div class="stat"><div class="k">解的深度 d</div><div class="v" id="sDepth">–</div></div>
+      <div class="stat"><div class="k">有效分支因子 b*</div><div class="v" id="sB">–</div></div>
+    </div>
+    <div class="row" style="margin-top:8px"><div class="msg" id="msg">点击"开始"一步步观察搜索，或点击"立即求解"。</div></div>
+
+    <div id="playback" class="hidden">
+      <h2>播放解路径</h2>
+      <div class="row">
+        <button id="pbFirst">⏮</button>
+        <button id="pbPrev">◀ 上一步</button>
+        <button id="pbNext">下一步 ▶</button>
+        <button id="pbPlay">▶ 自动播放</button>
+        <span class="speedval" id="pbPos">0 / 0</span>
+      </div>
+    </div>
+
+    <h2>算法对比（当前初始状态）</h2>
+    <div class="row"><button id="compare">运行 BFS、A*(h₁)、A*(h₂) 并对比</button></div>
+    <table id="cmpTbl" class="hidden">
+      <thead><tr><th>算法</th><th>扩展</th><th>生成 N</th><th>深度 d</th><th>b*</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="kbd hidden" id="cmpNote">b* 满足 N + 1 = 1 + b* + (b*)² + … + (b*)ᵈ，越接近 1 说明启发函数越好（教材 3.6.1 节）。</div>
+  </aside>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+
+// 状态用长度为 9 的字符串表示，'0' 是空格；目标与教材图 3.3 一致：空格在左上角
+const GOAL = '012345678';
+const BOOK = '724506831';
+const NB = [[1, 3], [0, 2, 4], [1, 5], [0, 4, 6], [1, 3, 5, 7], [2, 4, 8], [3, 7], [4, 6, 8], [5, 7]];
+const MAXEXP = 400000;
+
+const h1 = s => { let n = 0; for (let i = 0; i < 9; i++) if (s[i] !== '0' && s[i] !== GOAL[i]) n++; return n; };
+const h2 = s => { let n = 0; for (let i = 0; i < 9; i++) { const t = +s[i]; if (t) n += Math.abs((i / 3 | 0) - (t / 3 | 0)) + Math.abs(i % 3 - t % 3); } return n; };
+const swap = (s, i, j) => { const a = s.split(''); [a[i], a[j]] = [a[j], a[i]]; return a.join(''); };
+const succ = s => { const z = s.indexOf('0'); return NB[z].map(j => swap(s, z, j)); };
+function solvable(s) { const a = s.replace('0', '').split('').map(Number); let inv = 0; for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) if (a[i] > a[j]) inv++; return inv % 2 === 0; }
+
+const DESC = {
+  bfs: '<b>广度优先搜索</b>：不用启发信息，一层层地扩展。每步代价都是 1，所以能找到最短解，但要扩展的节点非常多。',
+  h1: '<b>h₁ = 错位方块数</b>：不在目标位置上的方块个数（不算空格）。每个错位方块至少要移动一次，所以 h₁ 不会高估，是<b>可采纳</b>的。',
+  h2: '<b>h₂ = 曼哈顿距离之和</b>：每个方块到目标位置的横向距离加纵向距离。每次移动只能让一个方块靠近一格，所以 h₂ 可采纳；而且 h₂ ≥ h₁，<b>h₂ 占优于 h₁</b>，扩展的节点更少。',
+  greedy: '<b>贪婪最佳优先</b>：只看 h₂，扩展"看起来离目标最近"的状态。往往很快，但找到的解<b>不一定最短</b>。'
+};
+
+// ---------- 最小堆 ----------
+class Heap {
+  constructor(less) { this.a = []; this.less = less; }
+  get size() { return this.a.length; }
+  push(x) { const a = this.a; a.push(x); let i = a.length - 1; while (i) { const p = (i - 1) >> 1; if (!this.less(a[i], a[p])) break; [a[i], a[p]] = [a[p], a[i]]; i = p; } }
+  pop() { const a = this.a, top = a[0], last = a.pop(); if (a.length) { a[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < a.length && this.less(a[l], a[m])) m = l; if (r < a.length && this.less(a[r], a[m])) m = r; if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } } return top; }
+}
+
+// ---------- 搜索 ----------
+function makeSearch(algo, start) {
+  const hf = algo === 'h1' ? h1 : (algo === 'h2' || algo === 'greedy') ? h2 : () => 0;
+  const key = algo === 'greedy' ? (g, h) => h : (g, h) => g + h;
+  const s = { algo, start, hf, key, g: new Map(), parent: new Map(), closed: new Set(), expanded: 0, generated: 1,
+    done: false, found: false, path: null, cur: null, children: [], queue: null, order: 0 };
+  s.gen = run(s);
+  return s;
+}
+function* run(s) {
+  const { start, hf, key } = s, bfs = s.algo === 'bfs';
+  s.g.set(start, 0); s.parent.set(start, null);
+  const node = (st, g) => ({ st, g, h: hf(st), f: key(g, hf(st)), o: s.order++ });
+  // f 相同时优先 h 小，再按入队顺序
+  const q = bfs ? { a: [], head: 0, push(x) { this.a.push(x); }, pop() { return this.a[this.head++]; }, get size() { return this.a.length - this.head; } }
+                : new Heap((x, y) => x.f !== y.f ? x.f < y.f : x.h !== y.h ? x.h < y.h : x.o < y.o);
+  s.queue = q;
+  q.push(node(start, 0));
+  while (q.size) {
+    const n = q.pop();
+    if (s.closed.has(n.st) || n.g > s.g.get(n.st)) continue;   // 过期条目
+    s.closed.add(n.st); s.cur = n; s.expanded++;
+    if (n.st === GOAL) {
+      s.path = []; for (let v = n.st; v !== null; v = s.parent.get(v)) s.path.unshift(v);
+      s.done = true; s.found = true; s.children = [];
+      yield { msg: `<b>找到目标！</b>解的深度 d = ${n.g}，共扩展 ${s.expanded} 个节点、生成 ${s.generated} 个节点。` };
+      return;
+    }
+    s.children = [];
+    for (const c of succ(n.st)) {
+      const g = n.g + 1;
+      const seen = s.g.has(c) && s.g.get(c) <= g;
+      const child = { st: c, g, h: hf(c), f: key(g, hf(c)), isNew: !seen };
+      s.children.push(child);
+      if (!seen) { s.g.set(c, g); s.parent.set(c, n.st); q.push(node(c, g)); s.generated++; }
+    }
+    if (s.expanded >= MAXEXP) { s.done = true; yield { msg: `已扩展 ${MAXEXP} 个节点仍未找到解，停止搜索。` }; return; }
+    const nNew = s.children.filter(c => c.isNew).length;
+    const what = bfs ? `深度 ${n.g}` : s.algo === 'greedy' ? `h = ${n.h}` : `f = g + h = ${n.g} + ${n.h} = ${n.f}`;
+    yield { msg: `第 ${s.expanded} 次扩展（${what}）：生成 ${s.children.length} 个子节点，其中 ${nNew} 个是新的。` };
+  }
+  s.done = true;
+  yield { msg: '边界已空：无解（初始状态与目标的奇偶性不同）。' };
+}
+function branching(N, d) {
+  if (d <= 0) return NaN;
+  const total = b => { let t = 0, p = 1; for (let i = 0; i <= d; i++) { t += p; p *= b; } return t; };
+  let lo = 1, hi = Math.max(2, N);
+  for (let k = 0; k < 100; k++) { const m = (lo + hi) / 2; if (total(m) < N + 1) lo = m; else hi = m; }
+  return (lo + hi) / 2;
+}
+
+// ---------- 棋盘 ----------
+function renderBoard(el, s, small = false) {
+  el.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const t = s[i]; if (t === '0') continue;
+    const d = document.createElement('div');
+    d.className = 'tile' + (t === GOAL[i] ? ' ok' : '');
+    d.textContent = t; d.dataset.t = t;
+    setPos(d, i, small);
+    el.appendChild(d);
+  }
+}
+function setPos(d, i, small) {
+  const pad = small ? 3 : 6, gap = small ? 3 : 6;
+  d.style.left = `calc(${pad}px + ${i % 3} * ((100% - ${2 * pad}px) / 3) + ${gap / 2}px)`;
+  d.style.top = `calc(${pad}px + ${i / 3 | 0} * ((100% - ${2 * pad}px) / 3) + ${gap / 2}px)`;
+}
+// 移动方块时让方块滑过去（用于编辑和播放）
+function animateBoard(el, s) {
+  const tiles = [...el.querySelectorAll('.tile')];
+  if (tiles.length !== 8) return renderBoard(el, s);
+  for (const d of tiles) { const i = s.indexOf(d.dataset.t); setPos(d, i, false); d.classList.toggle('ok', d.dataset.t === GOAL[i]); }
+}
+
+let startState = BOOK, S = null, playing = false, timer = null;
+let pbIdx = 0, pbTimer = null;
+
+function showNodeInfo(st, g) {
+  const algo = $('#algo').value;
+  const lines = [];
+  if (g !== undefined) lines.push(`<div><span class="k">g（已走步数）</span><div class="big">${g}</div></div>`);
+  lines.push(`<div><span class="k">h₁ 错位数</span><div class="big">${h1(st)}</div></div>`);
+  lines.push(`<div><span class="k">h₂ 曼哈顿距离</span><div class="big">${h2(st)}</div></div>`);
+  if (g !== undefined && (algo === 'h1' || algo === 'h2')) lines.push(`<div><span class="k">f = g + h</span><div class="big">${g + (algo === 'h1' ? h1(st) : h2(st))}</div></div>`);
+  $('#nodeinfo').innerHTML = lines.join('');
+}
+function drawChildren() {
+  const box = $('#children'); box.innerHTML = '';
+  if (!S || !S.children.length) return;
+  const algo = S.algo;
+  for (const c of S.children) {
+    const w = document.createElement('div'); w.className = 'child ' + (c.isNew ? 'new' : 'dup');
+    const b = document.createElement('div'); b.className = 'board small'; renderBoard(b, c.st, true);
+    const t = document.createElement('div'); t.className = 'tag';
+    t.textContent = algo === 'bfs' ? `深度 ${c.g}` : algo === 'greedy' ? `h=${c.h}` : `g=${c.g} h=${c.h} f=${c.f}`;
+    if (!c.isNew) t.textContent += '（已见过）';
+    w.append(b, t); box.appendChild(w);
+  }
+}
+function updateStats(msg) {
+  $('#sExp').textContent = S ? S.expanded.toLocaleString() : 0;
+  $('#sGen').textContent = S ? S.generated.toLocaleString() : 0;
+  const d = S && S.found ? S.path.length - 1 : null;
+  $('#sDepth').textContent = d ?? '–';
+  $('#sB').textContent = d ? branching(S.generated, d).toFixed(2) : '–';
+  if (msg !== undefined) $('#msg').innerHTML = msg;
+}
+function showIdle() {
+  $('#board').classList.add('editable');
+  $('#boardCaption').textContent = '初始状态（可以点击与空格相邻的方块来移动它）';
+  renderBoard($('#board'), startState); showNodeInfo(startState);
+  $('#children').innerHTML = ''; $('#playback').classList.add('hidden');
+}
+function showSearch() {
+  $('#board').classList.remove('editable');
+  if (S.found) { startPlayback(); return; }
+  $('#boardCaption').textContent = '当前扩展的节点';
+  renderBoard($('#board'), S.cur.st); showNodeInfo(S.cur.st, S.cur.g); drawChildren();
+}
+
+// ---------- 运行控制 ----------
+function step() {
+  if (!S) { if (!solvable(startState)) { updateStats('这个初始状态<b>无解</b>：逆序数为奇数，永远到不了目标。请重新打乱。'); return; } S = makeSearch($('#algo').value, startState); }
+  if (S.done) { setPlaying(false); return; }
+  const r = S.gen.next();
+  if (r.done) S.done = true;
+  if (S.cur) showSearch();
+  updateStats(r.value ? r.value.msg : undefined);
+  if (S.done) setPlaying(false);
+}
+function solveNow() {
+  setPlaying(false);
+  if (!S) { if (!solvable(startState)) { updateStats('这个初始状态<b>无解</b>，请重新打乱。'); return; } S = makeSearch($('#algo').value, startState); }
+  let last;
+  while (!S.done) { const r = S.gen.next(); if (r.done) break; last = r.value; }
+  if (S.cur) showSearch();
+  updateStats(last ? last.msg : undefined);
+}
+const STEP_SEC = [3, 2, 1.5, 1, 0.5, 0.25, 0.1, 0.05, 0.01];
+const delay = () => STEP_SEC[+$('#speed').value] * 1000;
+function tick() { if (!playing) return; step(); if (playing) timer = setTimeout(tick, delay()); }
+function setPlaying(p) { playing = p; clearTimeout(timer); $('#play').textContent = p ? '⏸ 暂停' : '▶ 开始'; if (p) tick(); }
+function resetSearch(msg = '点击"开始"一步步观察搜索，或点击"立即求解"。') { setPlaying(false); stopPb(); S = null; showIdle(); updateStats(msg); }
+function updateSpeedLabel() { const s = STEP_SEC[+$('#speed').value]; $('#speedVal').textContent = s >= 0.1 ? `${s} 秒` : `${s * 1000} 毫秒`; }
+function setSpeed(v) { $('#speed').value = Math.max(0, Math.min(STEP_SEC.length - 1, v)); updateSpeedLabel(); if (playing) { clearTimeout(timer); timer = setTimeout(tick, delay()); } }
+
+// ---------- 解路径播放 ----------
+function startPlayback() {
+  pbIdx = 0;
+  $('#playback').classList.remove('hidden');
+  $('#children').innerHTML = '';
+  $('#boardCaption').textContent = '解路径（用右侧"播放解路径"控制）';
+  renderBoard($('#board'), S.path[0]);
+  showPb();
+}
+function showPb() {
+  const st = S.path[pbIdx];
+  animateBoard($('#board'), st); showNodeInfo(st, pbIdx);
+  $('#pbPos').textContent = `${pbIdx} / ${S.path.length - 1}`;
+}
+function stopPb() { clearInterval(pbTimer); pbTimer = null; $('#pbPlay').textContent = '▶ 自动播放'; }
+function pbGo(i) { if (!S || !S.path) return; pbIdx = Math.max(0, Math.min(S.path.length - 1, i)); showPb(); }
+
+// ---------- 对比 ----------
+function compareAll() {
+  if (!solvable(startState)) return;
+  const tb = $('#cmpTbl tbody'); tb.innerHTML = '';
+  for (const [a, name] of [['bfs', 'BFS'], ['h1', 'A*(h₁)'], ['h2', 'A*(h₂)']]) {
+    const s = makeSearch(a, startState); for (const _ of s.gen) {}
+    const d = s.found ? s.path.length - 1 : null;
+    const tr = document.createElement('tr'); if (a === $('#algo').value) tr.className = 'cur';
+    tr.innerHTML = `<td>${name}</td><td>${s.expanded.toLocaleString()}</td><td>${s.generated.toLocaleString()}</td><td>${d ?? '–'}</td><td>${d ? branching(s.generated, d).toFixed(2) : '–'}</td>`;
+    tb.appendChild(tr);
+  }
+  $('#cmpTbl').classList.remove('hidden'); $('#cmpNote').classList.remove('hidden');
+}
+const refreshCompare = () => { if (!$('#cmpTbl').classList.contains('hidden')) compareAll(); };
+
+function scramble(n) {
+  let s = GOAL, prev = -1;
+  for (let k = 0; k < n; k++) {
+    const z = s.indexOf('0'); const opts = NB[z].filter(j => j !== prev);
+    const j = opts[Math.floor(Math.random() * opts.length)]; prev = z; s = swap(s, z, j);
+  }
+  return s;
+}
+function setStart(s) { startState = s; resetSearch(); refreshCompare(); }
+
+// ---------- 事件 ----------
+$('#goalBoard') && renderBoard($('#goalBoard'), GOAL, true);
+$('#board').addEventListener('click', e => {
+  if (S) return;
+  const t = e.target.closest('.tile'); if (!t) return;
+  const i = startState.indexOf(t.dataset.t), z = startState.indexOf('0');
+  if (!NB[z].includes(i)) return;
+  startState = swap(startState, z, i);
+  animateBoard($('#board'), startState); showNodeInfo(startState);
+  $('#cmpTbl').classList.add('hidden'); $('#cmpNote').classList.add('hidden');
+});
+const onClick = (sel, fn) => $(sel).addEventListener('click', e => { fn(); e.currentTarget.blur(); });
+onClick('#play', () => { if (S && S.done) resetSearch(); setPlaying(!playing); });
+onClick('#step', () => { setPlaying(false); step(); });
+onClick('#reset', () => resetSearch());
+onClick('#solve', solveNow);
+onClick('#compare', compareAll);
+onClick('#bookEx', () => setStart(BOOK));
+onClick('#shuffle', () => setStart(scramble(+$('#depth').value)));
+onClick('#pbFirst', () => { stopPb(); pbGo(0); });
+onClick('#pbPrev', () => { stopPb(); pbGo(pbIdx - 1); });
+onClick('#pbNext', () => { stopPb(); pbGo(pbIdx + 1); });
+onClick('#pbPlay', () => {
+  if (pbTimer) { stopPb(); return; }
+  if (pbIdx >= S.path.length - 1) pbGo(0);
+  $('#pbPlay').textContent = '⏸ 暂停';
+  pbTimer = setInterval(() => { if (pbIdx >= S.path.length - 1) { stopPb(); return; } pbGo(pbIdx + 1); }, Math.max(350, delay()));
+});
+$('#depth').addEventListener('input', () => { $('#depthVal').textContent = $('#depth').value; });
+$('#algo').addEventListener('change', () => { $('#desc').innerHTML = DESC[$('#algo').value]; resetSearch(); refreshCompare(); });
+$('#speed').addEventListener('input', () => setSpeed(+$('#speed').value));
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); if (S && S.done) resetSearch(); setPlaying(!playing); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); if (S && S.found) { stopPb(); pbGo(pbIdx + 1); } else { setPlaying(false); step(); } }
+  else if (e.code === 'ArrowLeft' && S && S.found) { e.preventDefault(); stopPb(); pbGo(pbIdx - 1); }
+  else if (e.key === 'r' || e.key === 'R') resetSearch();
+  else if (e.key === '-' || e.key === '_') setSpeed(+$('#speed').value - 1);
+  else if (e.key === '+' || e.key === '=') setSpeed(+$('#speed').value + 1);
+});
+if (!/github\.io$|^localhost$|^127\.|^$/.test(location.hostname)) document.querySelectorAll('a.back').forEach(a => a.remove());
+
+$('#desc').innerHTML = DESC.h2;
+updateSpeedLabel();
+resetSearch();
+</script>
